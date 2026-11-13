@@ -6,7 +6,8 @@ Slices for Cellar, built in this order. Each one is testable end to end.
 
 ## S01: Walking skeleton: a formula calculated, saved and deployed
 
-Status: In progress
+Status: Done
+PR: #3
 
 Acceptance criteria:
 - Typing `2` in A1 and `=A1+1` in A2 of the canvas grid shows `3` in A2. (R1,
