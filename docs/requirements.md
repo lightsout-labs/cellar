@@ -139,9 +139,10 @@ applications.
 
 ### User interface
 
-37. The interface follows Excel for the web: a tabbed ribbon toolbar, a
-    formula bar with a name box, the grid, sheet tabs, and a status bar.
-    Every feature above is reachable from the ribbon or a context menu.
+37. The interface uses the layout of Excel for the web: a tabbed ribbon
+    toolbar, a formula bar with a name box, the grid, sheet tabs, and a
+    status bar. Every feature above is reachable from the ribbon or a
+    context menu.
 38. Right-clicking a cell, row header, column header or sheet tab opens a
     context menu with the actions that apply to it.
 39. The status bar shows sum, average and count for the current selection,
@@ -153,40 +154,52 @@ applications.
     is remembered.
 42. The interface has light and dark themes. It follows the system setting
     by default, and the user can switch; the choice is remembered.
-43. Controls are visually consistent, aligned and labeled, show hover,
+43. The interface has a modern visual style of its own rather than a copy
+    of Excel's: flat surfaces, generous and consistent spacing, rounded
+    controls, a single consistent icon set, a restrained color palette with
+    one accent color, and short, subtle transitions on menus, dialogs and
+    hover states. The level of polish is that of Linear or Notion.
+44. Controls are visually consistent, aligned and labeled, show hover,
     focus and disabled states, and have tooltips with their shortcut. No
     control is a placeholder that does nothing.
 
 ### Performance
 
-44. A sheet with 100,000 populated rows and 100 columns scrolls at 60
+45. A sheet with 100,000 populated rows and 100 columns scrolls at 60
     frames per second on a current mid-range laptop.
-45. Editing one cell that 100,000 formula cells depend on shows the
+46. Editing one cell that 100,000 formula cells depend on shows the
     recalculated results within 1 second, and the interface stays
     responsive while it recalculates.
-46. A 10 MB `.xlsx` file opens within 5 seconds.
+47. A 10 MB `.xlsx` file opens within 5 seconds.
 
 ### Quality and delivery
 
-47. The formula engine, the file import and export, and the editing
+48. The formula engine, the file import and export, and the editing
     operations have automated tests. End-to-end tests in a real browser
     cover the main user flows. All tests run in CI on every pull request.
-48. Every merge to `main` deploys the app to GitHub Pages automatically,
+49. Every merge to `main` deploys the app to GitHub Pages automatically,
     and the deployed app works when served from the repository's
     sub-path.
-49. The spreadsheet engine (workbook model, formulas, file formats) has no
+50. The spreadsheet engine (workbook model, formulas, file formats) has no
     dependency on the browser DOM and runs under Node.js, as its tests
     demonstrate.
-50. Everything the app needs from its host platform (opening and saving
+51. Everything the app needs from its host platform (opening and saving
     files, persistent storage, clipboard, printing) goes through one
     platform interface with a single web implementation, so that a desktop
     shell can supply another implementation without changes to the engine
     or the UI.
+52. The repository has a `README.md` that states what Cellar is, links to
+    the deployed app, lists its features, and gives the commands to
+    install, run, test and build it.
+53. The repository has a `LICENSE` file with the MIT license.
+54. The repository has a `CLAUDE.md` that tells a coding agent how the
+    project is laid out, the commands to run, test, lint and build it, and
+    the conventions to follow. It is kept accurate as the project changes.
 
 ## Out of scope
 
 - Desktop builds for Windows, Linux and macOS. Only the architecture that
-  permits them (requirements 49 and 50) is delivered.
+  permits them (requirements 50 and 51) is delivered.
 - Charts and pivot tables.
 - Dynamic array formulas that spill (`FILTER`, `SORT`, `UNIQUE`,
   `SEQUENCE`), and financial and engineering function families beyond the
@@ -224,9 +237,12 @@ requirement above.
   workbooks, plus opening and saving files on disk; no account or cloud.
 - **Desktop versions**: architecture only; no desktop builds in this
   version.
-- **UI quality bar**: Excel for the web, with a tabbed ribbon.
+- **UI quality bar**: the layout of Excel for the web, with a tabbed
+  ribbon, in a modern visual style with the polish of Linear or Notion.
 - **Scale**: 100,000 rows by 100 columns must stay smooth.
 - **Extras**: English and Simplified Chinese interface, dark mode, printing
   and PDF export, cell notes and hyperlinks are all included.
 - **Devices**: desktop browsers only.
 - **Name**: Cellar.
+- **Repository documents**: a README, an MIT license and a `CLAUDE.md` are
+  required.
