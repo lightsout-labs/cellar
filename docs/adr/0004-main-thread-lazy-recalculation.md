@@ -26,12 +26,22 @@ returns. `cell()` calculates a dirty cell, and the dirty cells it depends
 on, before answering. The workbook finishes the rest in batches of a few
 milliseconds through a scheduling function that the host supplies.
 
+On-demand calculation follows dependencies with an explicit stack, never
+with recursion. A sheet can hold a chain of 100,000 formulas in which each
+depends on the one before, and reading the last one must calculate them
+all; recursive evaluation would overflow the call stack.
+
 ## Consequences
 
 - The cells on screen are correct in the frame after an edit, however many
   other cells depend on it, and reads stay synchronous everywhere.
 - The engine holds the only copy of the workbook; there is no protocol and
   no cache to keep in step.
+- The depth of a dependency chain is limited by memory, not by the call
+  stack. The evaluator is harder to write than a recursive one, and the
+  same explicit stack detects circular references.
+- Reading the end of a long dirty chain calculates the whole chain in one
+  step, so that read blocks for as long as the chain takes.
 - One formula that is slow by itself, such as a lookup over a very large
   range, still blocks for its own duration.
 - Opening a large file parses it on the main thread, so the interface does

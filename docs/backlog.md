@@ -132,7 +132,8 @@ Acceptance criteria:
 - The seven Excel error values appear where Excel produces them and propagate
   through dependent formulas. (R13)
 - Changing a cell updates every formula that depends on it, directly or
-  indirectly, and calculates no others. (R14)
+  indirectly, and calculates no others; this holds through a chain of 100,000
+  formulas that each depend on the one before. (R14)
 - A circular reference is reported to the user, and the app keeps working.
   (R15)
 - After a change to a cell that 100,000 formulas depend on, the visible
