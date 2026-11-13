@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   base: '/cellar/',
+  // The commit a build was made from, so that the smoke test can tell
+  // that the address serves the new build.
+  define: { __COMMIT__: JSON.stringify(process.env.GITHUB_SHA ?? '') },
   plugins: [react()],
   preview: { port: 4173, strictPort: true },
   test: {

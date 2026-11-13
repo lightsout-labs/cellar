@@ -1,8 +1,22 @@
 import { expect, type Page } from '@playwright/test';
 import { cellRect } from '../../src/app/grid/geometry';
 
-/** Opens the app and waits for the grid. */
+/**
+ * Opens the app and waits for the grid. With CELLAR_COMMIT set, first waits
+ * until the address serves the build of that commit, not a cached older one.
+ */
 export async function openApp(page: Page): Promise<void> {
+  const commit = process.env.CELLAR_COMMIT;
+  if (commit) {
+    await expect(async () => {
+      await page.goto('./');
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-commit',
+        commit,
+        { timeout: 1000 },
+      );
+    }).toPass({ timeout: 120_000 });
+  }
   await page.goto('./');
   await expect(page.locator('canvas')).toBeVisible();
 }

@@ -26,7 +26,10 @@ function database(): Promise<IDBDatabase> {
       request.result.createObjectStore(SHEETS, { keyPath: ['workbook', 'id'] });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error!);
+    request.onerror = () => {
+      opening = undefined; // The next call tries again.
+      reject(request.error!);
+    };
   });
   return opening;
 }

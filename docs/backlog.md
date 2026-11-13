@@ -35,6 +35,20 @@ Notes:
   lost; the end-to-end test waits for the autosave before it reloads. S04,
   which requires every edit to survive closing the browser, needs another
   mechanism.
+- Autosave failures are silent and a failed load leaves the page empty; no
+  criterion covers them yet.
+- `Grid` takes `workbook` and `sheet` and keeps the active cell and the entry
+  inside. S02 lifts them into the `View` of the architecture, for the name box
+  and formula bar.
+- `parseInput` recognizes plain numbers with a regular expression; `numfmt`
+  arrives with S04. Only `+`, numbers and references parse; anything else
+  after `=` is kept as text, and formulas that read each other give `#VALUE!`
+  until S07.
+- `Platform.workbooks.save` writes every sheet. Writing only the changed
+  sheets matters from S06, when there is more than one.
+- End-to-end tests read a cell through the grid's `role="status"` element,
+  which announces the active cell as `A2 3`; helpers are in
+  `tests/e2e/grid.ts`.
 
 ## S02: The application shell, in two languages and two themes
 

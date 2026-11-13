@@ -5,6 +5,7 @@ import { clickCell, enter, expectCell, isCellPainted, openApp } from './grid';
 test('a formula typed in the grid shows its result @smoke', async ({
   page,
 }) => {
+  test.setTimeout(150_000); // A new deployment can take a while to be served.
   await openApp(page);
   await clickCell(page, 0, 0);
   await enter(page, '2'); // Enter moves down to A2.

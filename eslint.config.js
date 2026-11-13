@@ -12,6 +12,7 @@ const platformGlobals = [
   'showOpenFilePicker',
   'showSaveFilePicker',
   'print',
+  'caches',
   'FileReader',
   'ClipboardItem',
 ];
@@ -30,8 +31,9 @@ const platformBoundary = {
         message: viaPlatform,
       })),
     ),
-    { object: 'navigator', property: 'clipboard', message: viaPlatform },
+    { property: 'clipboard', message: viaPlatform },
     { object: 'navigator', property: 'storage', message: viaPlatform },
+    { object: 'document', property: 'cookie', message: viaPlatform },
     { object: 'document', property: 'execCommand', message: viaPlatform },
     { property: 'clipboardData', message: viaPlatform },
   ],
@@ -68,6 +70,17 @@ export default tseslint.config(
   tseslint.configs.recommended,
   { rules: platformBoundary },
   {
+    // Only the entry point chooses the implementation of Platform.
+    files: ['src/app/**', 'src/engine/**'],
+    ignores: ['src/app/platform/web/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: 'platform/web(/|$)', message: viaPlatform }] },
+      ],
+    },
+  },
+  {
     files: ['src/app/platform/web/**'],
     rules: {
       'no-restricted-globals': 'off',
@@ -83,6 +96,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
+            { regex: 'platform/web(/|$)', message: viaPlatform },
             {
               regex: '(^|/)app(/|$)',
               message: 'The engine must not import from src/app.',

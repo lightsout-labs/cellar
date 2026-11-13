@@ -53,3 +53,4 @@ jobs:
       - run: npx playwright test --project chromium --grep @smoke
         env:
           CELLAR_URL: https://lightsout-labs.github.io/cellar/
+          CELLAR_COMMIT: ${{ github.sha }}

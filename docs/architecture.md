@@ -179,6 +179,7 @@ workflow runs on every push to `main`: it builds the production bundle with
 the base path `/cellar/`, publishes it with the GitHub Pages actions, and
 then runs one Playwright smoke test against the live address, which loads
 the app, enters a formula and checks the result. It is the end-to-end test
-tagged `@smoke`, run with `CELLAR_URL` set to the live address. A failed smoke test fails
+tagged `@smoke`, run with `CELLAR_URL` set to the live address and
+`CELLAR_COMMIT` to the deployed commit, which the test waits to be served. A failed smoke test fails
 the workflow. A release is verified by that smoke test and by the human's
 acceptance of the deployed app.

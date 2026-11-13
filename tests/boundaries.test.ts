@@ -13,7 +13,10 @@ const platformApis = [
   ['browser storage', 'localStorage.setItem("theme", "dark");'],
   ['browser storage', 'window.localStorage.getItem("theme");'],
   ['browser storage', 'void navigator.storage.persist();'],
+  ['browser storage', 'document.cookie = "a=1";'],
+  ['browser storage', 'void caches.open("a");'],
   ['the clipboard', 'void navigator.clipboard.writeText("a");'],
+  ['the clipboard', 'void window.navigator.clipboard.readText();'],
   [
     'the clipboard',
     'export const read = (e: ClipboardEvent) => e.clipboardData;',
@@ -57,6 +60,19 @@ describe('module boundaries enforced by lint', () => {
       );
     },
   );
+
+  it('fails when the web platform is imported past the interface', async () => {
+    const code = 'import "../platform/web";';
+    expect(await problems(code, 'src/app/ui/Example.tsx')).toEqual([
+      'no-restricted-imports',
+    ]);
+    expect(
+      await problems('import "../platform";', 'src/app/ui/Example.tsx'),
+    ).toEqual([]);
+    expect(
+      await problems('import "./app/platform/web";', 'src/main.tsx'),
+    ).toEqual([]);
+  });
 
   it('fails when the engine imports the app or the UI library', async () => {
     const file = 'src/engine/workbook/example.ts';
