@@ -1,0 +1,71 @@
+import { expect, type Page } from '@playwright/test';
+import { cellRect } from '../../src/app/grid/geometry';
+
+/** Opens the app and waits for the grid. */
+export async function openApp(page: Page): Promise<void> {
+  await page.goto('./');
+  await expect(page.locator('canvas')).toBeVisible();
+}
+
+/** Clicks the middle of a cell of the canvas grid. */
+export async function clickCell(
+  page: Page,
+  row: number,
+  col: number,
+): Promise<void> {
+  const rect = cellRect({ row, col });
+  await page.locator('canvas').click({
+    position: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+  });
+}
+
+/** Types an entry into the active cell and commits it with Enter. */
+export async function enter(page: Page, text: string): Promise<void> {
+  await page.keyboard.type(text);
+  await page.keyboard.press('Enter');
+}
+
+/** Selects a cell and expects the grid to announce its name and contents. */
+export async function expectCell(
+  page: Page,
+  row: number,
+  col: number,
+  announced: string,
+): Promise<void> {
+  await clickCell(page, row, col);
+  await expect(page.getByRole('status')).toHaveText(announced);
+}
+
+/**
+ * Whether the canvas has drawn anything inside a cell, away from its grid
+ * lines: the share of pixels there that differ from the top-left one.
+ */
+export async function isCellPainted(
+  page: Page,
+  row: number,
+  col: number,
+): Promise<boolean> {
+  const rect = cellRect({ row, col });
+  return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
+    const scale = canvas.width / canvas.clientWidth;
+    const inset = 4;
+    const { data } = canvas
+      .getContext('2d')!
+      .getImageData(
+        (rect.x + inset) * scale,
+        (rect.y + inset) * scale,
+        (rect.width - 2 * inset) * scale,
+        (rect.height - 2 * inset) * scale,
+      );
+    for (let i = 4; i < data.length; i += 4) {
+      if (
+        data[i] !== data[0] ||
+        data[i + 1] !== data[1] ||
+        data[i + 2] !== data[2]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, rect);
+}

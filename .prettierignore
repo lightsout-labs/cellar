@@ -1,0 +1,7 @@
+dist/
+coverage/
+test-results/
+playwright-report/
+package-lock.json
+# Documents are written by hand and by the nightshift skills.
+*.md

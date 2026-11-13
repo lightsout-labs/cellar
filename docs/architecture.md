@@ -113,7 +113,9 @@ workbook leaves the engine.
   modification time, workbook properties). `sheets` holds one record for
   each sheet, keyed by workbook and sheet identifier, so that autosave
   rewrites only the sheets that changed. Autosave runs half a second after
-  the last change and when the page is hidden.
+  the last change and when the page is hidden. A save cannot be started
+  while the page unloads: browsers discard an IndexedDB transaction that
+  begins then.
 - **Preferences** (language, theme): through `Platform.preferences`, stored
   in `localStorage` by the web implementation.
 - **Files**: `.xlsx` and `.csv`, converted to and from a snapshot by
@@ -122,6 +124,7 @@ workbook leaves the engine.
 ## Repository layout
 
 ```
+src/engine/value.ts      The value types shared by the engine modules
 src/engine/workbook/     Workbook model, commands, recalculation, undo
 src/engine/formula/      Parser, evaluator, function library
 src/engine/format/       Number formats and input recognition
@@ -132,13 +135,17 @@ src/app/grid/            Canvas grid and the view state
 src/app/ui/              React shell, dictionaries, themes
 src/main.tsx             Entry point: creates the web platform, mounts App
 tests/e2e/               Playwright tests
+tests/boundaries.test.ts Checks that lint enforces the module boundaries
 tests/fixtures/          Sample .xlsx and .csv files
 scripts/check-docs.py    Document checker, copied from nightshift
 docs/                    Requirements, architecture, ADRs, backlog
 .github/workflows/       CI and deployment
 ```
 
-Unit tests sit beside the code they test, as `*.test.ts`.
+Unit tests sit beside the code they test, as `*.test.ts`. In `src/app`, code
+that touches the DOM is in `.tsx` files or in `src/app/platform/web` and is
+covered by the end-to-end tests; every other `.ts` file there has no DOM, is
+unit tested, and counts toward the coverage floor.
 
 ## Make targets
 
@@ -171,6 +178,7 @@ The app runs at `https://lightsout-labs.github.io/cellar/`. A GitHub Actions
 workflow runs on every push to `main`: it builds the production bundle with
 the base path `/cellar/`, publishes it with the GitHub Pages actions, and
 then runs one Playwright smoke test against the live address, which loads
-the app, enters a formula and checks the result. A failed smoke test fails
+the app, enters a formula and checks the result. It is the end-to-end test
+tagged `@smoke`, run with `CELLAR_URL` set to the live address. A failed smoke test fails
 the workflow. A release is verified by that smoke test and by the human's
 acceptance of the deployed app.

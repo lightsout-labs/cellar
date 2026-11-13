@@ -6,7 +6,7 @@ Slices for Cellar, built in this order. Each one is testable end to end.
 
 ## S01: Walking skeleton: a formula calculated, saved and deployed
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Typing `2` in A1 and `=A1+1` in A2 of the canvas grid shows `3` in A2. (R1,
@@ -26,6 +26,15 @@ Acceptance criteria:
 - The repository has a `README.md` with the deployed link and the install,
   run, test and build commands, the MIT `LICENSE`, and a `CLAUDE.md`. (R52,
   R53, R54)
+
+Notes:
+- Failed fix: saving to IndexedDB from `pagehide` or `visibilitychange` when
+  the page is reloaded. Chromium discards a transaction started while the page
+  unloads, even one that is started synchronously and committed explicitly.
+  An edit made less than half a second before a reload or close is therefore
+  lost; the end-to-end test waits for the autosave before it reloads. S04,
+  which requires every edit to survive closing the browser, needs another
+  mechanism.
 
 ## S02: The application shell, in two languages and two themes
 
