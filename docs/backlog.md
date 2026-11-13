@@ -6,7 +6,8 @@ Slices for Cellar, built in this order. Each one is testable end to end.
 
 ## S01: Walking skeleton: a formula calculated, saved and deployed
 
-Status: Todo
+Status: Done
+PR: #3
 
 Acceptance criteria:
 - Typing `2` in A1 and `=A1+1` in A2 of the canvas grid shows `3` in A2. (R1,
@@ -26,6 +27,29 @@ Acceptance criteria:
 - The repository has a `README.md` with the deployed link and the install,
   run, test and build commands, the MIT `LICENSE`, and a `CLAUDE.md`. (R52,
   R53, R54)
+
+Notes:
+- Failed fix: saving to IndexedDB from `pagehide` or `visibilitychange` when
+  the page is reloaded. Chromium discards a transaction started while the page
+  unloads, even one that is started synchronously and committed explicitly.
+  An edit made less than half a second before a reload or close is therefore
+  lost; the end-to-end test waits for the autosave before it reloads. S04,
+  which requires every edit to survive closing the browser, needs another
+  mechanism.
+- Autosave failures are silent and a failed load leaves the page empty; no
+  criterion covers them yet.
+- `Grid` takes `workbook` and `sheet` and keeps the active cell and the entry
+  inside. S02 lifts them into the `View` of the architecture, for the name box
+  and formula bar.
+- `parseInput` recognizes plain numbers with a regular expression; `numfmt`
+  arrives with S04. Only `+`, numbers and references parse; anything else
+  after `=` is kept as text, and formulas that read each other give `#VALUE!`
+  until S07.
+- `Platform.workbooks.save` writes every sheet. Writing only the changed
+  sheets matters from S06, when there is more than one.
+- End-to-end tests read a cell through the grid's `role="status"` element,
+  which announces the active cell as `A2 3`; helpers are in
+  `tests/e2e/grid.ts`.
 
 ## S02: The application shell, in two languages and two themes
 

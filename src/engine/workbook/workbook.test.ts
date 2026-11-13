@@ -1,0 +1,137 @@
+import { describe, expect, it, vi } from 'vitest';
+import { cellName, createWorkbook, Workbook } from './index';
+
+function setup() {
+  const workbook = createWorkbook();
+  const sheet = workbook.sheets[0]!.id;
+  const set = (row: number, col: number, input: string) =>
+    workbook.execute({ type: 'setCell', sheet, row, col, input });
+  const show = (row: number, col: number) =>
+    workbook.cell(sheet, row, col).display;
+  return { workbook, sheet, set, show };
+}
+
+describe('workbook', () => {
+  it('runs without a DOM', () => {
+    expect(typeof document).toBe('undefined');
+    expect(typeof window).toBe('undefined');
+  });
+
+  it('calculates a formula from another cell', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '2');
+    set(1, 0, '=A1+1');
+    expect(workbook.cell(sheet, 1, 0)).toEqual({
+      value: 3,
+      formula: '=A1+1',
+      display: '3',
+    });
+    expect(workbook.cell(sheet, 0, 0)).toEqual({
+      value: 2,
+      formula: null,
+      display: '2',
+    });
+  });
+
+  it('recalculates a formula when a cell it reads changes', () => {
+    const { set, show } = setup();
+    set(1, 0, '=A1+1');
+    set(2, 0, '=A2+1');
+    expect(show(2, 0)).toBe('2');
+    set(0, 0, '40');
+    expect(show(2, 0)).toBe('42');
+  });
+
+  it('replaces a formula with a value, and a value with nothing', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '=B1+1');
+    set(0, 0, 'text');
+    expect(workbook.cell(sheet, 0, 0)).toEqual({
+      value: 'text',
+      formula: null,
+      display: 'text',
+    });
+    set(0, 0, '');
+    expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+  });
+
+  it('keeps an entry that is not a valid formula as text', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '=A1+');
+    expect(workbook.cell(sheet, 0, 0)).toEqual({
+      value: '=A1+',
+      formula: null,
+      display: '=A1+',
+    });
+  });
+
+  it('gives #VALUE! for formulas that read each other, without hanging', () => {
+    const { set, show } = setup();
+    set(0, 0, '=B1+1');
+    set(0, 1, '=A1+1');
+    expect(show(0, 0)).toBe('#VALUE!');
+    set(0, 1, '1');
+    expect(show(0, 0)).toBe('2');
+  });
+
+  it('reads a cell that was never set as empty', () => {
+    const { workbook, sheet } = setup();
+    expect(workbook.cell(sheet, 99_999, 99)).toEqual({
+      value: null,
+      formula: null,
+      display: '',
+    });
+  });
+
+  it('notifies subscribers of each change until they unsubscribe', () => {
+    const { workbook, set } = setup();
+    const listener = vi.fn();
+    const unsubscribe = workbook.subscribe(listener);
+    set(0, 0, '1');
+    set(0, 0, '2');
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+    set(0, 0, '3');
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('restores values and formulas from a snapshot', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '2');
+    set(1, 0, '=A1+1');
+    set(4, 2, 'note');
+    const snapshot = JSON.parse(JSON.stringify(workbook.toSnapshot()));
+    const restored = Workbook.fromSnapshot(snapshot);
+    expect(restored.sheets).toEqual(workbook.sheets);
+    expect(restored.cell(sheet, 0, 0).display).toBe('2');
+    expect(restored.cell(sheet, 1, 0)).toEqual(workbook.cell(sheet, 1, 0));
+    expect(restored.cell(sheet, 4, 2).display).toBe('note');
+    expect(restored.toSnapshot()).toEqual(snapshot);
+  });
+
+  it('refuses a snapshot of an unknown version', () => {
+    const snapshot = { ...createWorkbook().toSnapshot(), version: 2 };
+    expect(() => Workbook.fromSnapshot(snapshot as never)).toThrow(/version/);
+  });
+
+  it('refuses a command for a sheet that does not exist', () => {
+    const { workbook } = setup();
+    expect(() =>
+      workbook.execute({
+        type: 'setCell',
+        sheet: 'missing',
+        row: 0,
+        col: 0,
+        input: '1',
+      }),
+    ).toThrow(/missing/);
+  });
+
+  it('names cells as Excel does', () => {
+    expect(cellName(0, 0)).toBe('A1');
+    expect(cellName(1, 25)).toBe('Z2');
+    expect(cellName(9, 26)).toBe('AA10');
+    expect(cellName(0, 701)).toBe('ZZ1');
+    expect(cellName(0, 702)).toBe('AAA1');
+  });
+});
