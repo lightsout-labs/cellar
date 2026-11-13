@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Draft
+Status: Approved
 
 How Cellar is built. What it must do is in
 [requirements.md](requirements.md). Reasons for the decisions that are costly
