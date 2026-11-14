@@ -50,7 +50,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
   await expect(
     page.getByRole('list', { name: 'Sheets' }).getByRole('listitem'),
   ).toHaveText(['Sheet1']);
-  await expect(page.getByRole('contentinfo')).toHaveText('Ready');
+  await expect(page.getByRole('contentinfo')).toContainText('Ready');
 });
 
 test('the name box and the formula bar follow the active cell', async ({
@@ -74,7 +74,7 @@ test('the name box and the formula bar follow the active cell', async ({
   await expect(formulaBar(page)).toHaveText('');
   await page.keyboard.type('45');
   await expect(formulaBar(page)).toHaveText('45');
-  await expect(page.getByRole('contentinfo')).toHaveText('Enter');
+  await expect(page.getByRole('contentinfo')).toContainText('Enter');
   await page.keyboard.press('Escape');
   await expect(formulaBar(page)).toHaveText('');
 });
@@ -108,10 +108,22 @@ test.describe('in a browser set to Chinese', () => {
       page.getByLabel('编辑栏'),
       page.getByRole('list', { name: '工作表' }),
       page.getByRole('contentinfo').getByText('就绪'),
+      page.getByRole('button', { name: '放大' }),
+      page.getByRole('button', { name: '缩小' }),
+      page.getByRole('slider', { name: '缩放' }),
     ];
     for (const each of chinese) await expect(each).toBeVisible();
     await page.getByRole('button', { name: '深色' }).hover();
     await expect(page.getByRole('tooltip')).toHaveText('使用深色主题');
+    // The summary of a selection is in Chinese too.
+    await page.locator('canvas').click({ position: { x: 4, y: 4 } });
+    await page.locator('canvas').click({ position: { x: 100, y: 36 } });
+    await page.keyboard.type('5');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Shift+ArrowUp');
+    await expect(page.getByLabel('选定区域的汇总')).toHaveText(
+      '平均值: 5计数: 1求和: 5',
+    );
 
     await page.getByRole('button', { name: 'English' }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -126,6 +138,9 @@ test.describe('in a browser set to Chinese', () => {
       formulaBar(page),
       page.getByRole('list', { name: 'Sheets' }),
       page.getByRole('contentinfo').getByText('Ready'),
+      page.getByRole('button', { name: 'Zoom in' }),
+      page.getByRole('button', { name: 'Zoom out' }),
+      page.getByRole('slider', { name: 'Zoom' }),
     ];
     for (const each of english) await expect(each).toBeVisible();
     for (const each of chinese) await expect(each).toHaveCount(0);
@@ -198,13 +213,17 @@ test.describe('the controls', () => {
       ['button', 'Dark', 'Use the dark theme'],
       ['button', 'English', 'Show the interface in English'],
       ['button', '中文', 'Show the interface in Simplified Chinese'],
+      ['button', 'Zoom out', 'Zoom out by 10%'],
+      ['button', 'Zoom in', 'Zoom in by 10%'],
+      ['slider', 'Zoom', 'Size of the grid'],
     ] as const;
     for (const [role, name, tooltip] of tooltips) {
       await page.getByRole(role, { name }).hover();
       await expect(page.getByRole('tooltip')).toHaveText(tooltip);
     }
     // No control is left out of the list above.
-    await expect(page.getByRole('button')).toHaveCount(4);
+    await expect(page.getByRole('button')).toHaveCount(6);
+    await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
     ).toHaveCount(1);

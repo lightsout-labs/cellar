@@ -1,4 +1,6 @@
-/** Sizes of the grid, in CSS pixels. */
+import { SHEET_COLUMNS, SHEET_ROWS, type Range } from '../../engine/workbook';
+
+/** Sizes of the grid at 100%, in CSS pixels. */
 export const ROW_HEADER_WIDTH = 46;
 export const COLUMN_HEADER_HEIGHT = 24;
 export const COLUMN_WIDTH = 96;
@@ -17,32 +19,112 @@ export interface Rect {
   readonly height: number;
 }
 
-/** Where a cell is drawn on the canvas. */
-export function cellRect({ row, col }: CellPosition): Rect {
+/**
+ * Which part of the sheet the canvas shows: how far it is scrolled, in
+ * CSS pixels at the zoom, and the zoom, where 1 is 100%.
+ */
+export interface Viewport {
+  readonly scrollX: number;
+  readonly scrollY: number;
+  readonly zoom: number;
+}
+
+/** What is under a point of the canvas. */
+export type Target =
+  | { readonly kind: 'cell'; readonly row: number; readonly col: number }
+  | { readonly kind: 'row'; readonly row: number }
+  | { readonly kind: 'column'; readonly col: number }
+  | { readonly kind: 'all' };
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+/** The size of the whole sheet, headers included, at a zoom. */
+export function sheetSize(zoom: number): { width: number; height: number } {
   return {
-    x: ROW_HEADER_WIDTH + col * COLUMN_WIDTH,
-    y: COLUMN_HEADER_HEIGHT + row * ROW_HEIGHT,
-    width: COLUMN_WIDTH,
-    height: ROW_HEIGHT,
+    width: (ROW_HEADER_WIDTH + SHEET_COLUMNS * COLUMN_WIDTH) * zoom,
+    height: (COLUMN_HEADER_HEIGHT + SHEET_ROWS * ROW_HEIGHT) * zoom,
   };
 }
 
-/** The cell under a point of the canvas, or `null` under a header. */
-export function cellAt(x: number, y: number): CellPosition | null {
-  if (x < ROW_HEADER_WIDTH || y < COLUMN_HEADER_HEIGHT) return null;
+/** Where a cell is drawn on the canvas. The headers stay in place. */
+export function cellRect(
+  { row, col }: CellPosition,
+  { scrollX, scrollY, zoom }: Viewport,
+): Rect {
   return {
-    row: Math.floor((y - COLUMN_HEADER_HEIGHT) / ROW_HEIGHT),
-    col: Math.floor((x - ROW_HEADER_WIDTH) / COLUMN_WIDTH),
+    x: (ROW_HEADER_WIDTH + col * COLUMN_WIDTH) * zoom - scrollX,
+    y: (COLUMN_HEADER_HEIGHT + row * ROW_HEIGHT) * zoom - scrollY,
+    width: COLUMN_WIDTH * zoom,
+    height: ROW_HEIGHT * zoom,
   };
 }
 
-/** How many rows and columns a canvas of this size shows, partial ones included. */
-export function visibleCells(
+/**
+ * The cell or header under a point of the canvas. A point beyond the last
+ * row or column is taken to be on it.
+ */
+export function hitTest(x: number, y: number, viewport: Viewport): Target {
+  const { zoom } = viewport;
+  const inRowHeader = x < ROW_HEADER_WIDTH * zoom;
+  const inColumnHeader = y < COLUMN_HEADER_HEIGHT * zoom;
+  const row = rowAt(y, viewport);
+  const col = colAt(x, viewport);
+  if (inRowHeader && inColumnHeader) return { kind: 'all' };
+  if (inRowHeader) return { kind: 'row', row };
+  if (inColumnHeader) return { kind: 'column', col };
+  return { kind: 'cell', row, col };
+}
+
+function rowAt(y: number, { scrollY, zoom }: Viewport): number {
+  const row = Math.floor(
+    ((y + scrollY) / zoom - COLUMN_HEADER_HEIGHT) / ROW_HEIGHT,
+  );
+  return clamp(row, 0, SHEET_ROWS - 1);
+}
+
+function colAt(x: number, { scrollX, zoom }: Viewport): number {
+  const col = Math.floor(
+    ((x + scrollX) / zoom - ROW_HEADER_WIDTH) / COLUMN_WIDTH,
+  );
+  return clamp(col, 0, SHEET_COLUMNS - 1);
+}
+
+/** The cells that a canvas of this size shows, partial ones included. */
+export function visibleRange(
   width: number,
   height: number,
-): { rows: number; cols: number } {
+  viewport: Viewport,
+): Range {
+  const { zoom } = viewport;
   return {
-    rows: Math.max(0, Math.ceil((height - COLUMN_HEADER_HEIGHT) / ROW_HEIGHT)),
-    cols: Math.max(0, Math.ceil((width - ROW_HEADER_WIDTH) / COLUMN_WIDTH)),
+    top: rowAt(COLUMN_HEADER_HEIGHT * zoom, viewport),
+    left: colAt(ROW_HEADER_WIDTH * zoom, viewport),
+    bottom: rowAt(height - 1, viewport),
+    right: colAt(width - 1, viewport),
+  };
+}
+
+/**
+ * The scroll position closest to the current one at which a canvas of
+ * this size shows the whole of a cell, or as much of it as fits.
+ */
+export function scrollToShow(
+  cell: CellPosition,
+  viewport: Viewport,
+  width: number,
+  height: number,
+): { scrollX: number; scrollY: number } {
+  const { scrollX, scrollY, zoom } = viewport;
+  const rect = cellRect(cell, viewport);
+  const show = (start: number, size: number, from: number, to: number) => {
+    if (start < from) return start - from;
+    if (start + size > to) return Math.min(start + size - to, start - from);
+    return 0;
+  };
+  return {
+    scrollX: scrollX + show(rect.x, rect.width, ROW_HEADER_WIDTH * zoom, width),
+    scrollY:
+      scrollY + show(rect.y, rect.height, COLUMN_HEADER_HEIGHT * zoom, height),
   };
 }

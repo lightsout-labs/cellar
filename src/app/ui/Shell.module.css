@@ -234,10 +234,73 @@
   display: flex;
   flex: none;
   align-items: center;
-  height: 24px;
+  gap: 16px;
+  height: 28px;
   padding: 0 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
+}
+
+.summary {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background-color var(--transition),
+    color var(--transition);
+}
+
+.iconButton:hover {
+  background: var(--hover);
+}
+
+.iconButton:disabled {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.slider {
+  width: 100px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.iconButton:focus-visible,
+.slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.slider:hover {
+  opacity: 0.85;
+}
+
+.percent {
+  width: 36px;
+  text-align: right;
 }

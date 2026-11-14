@@ -1,18 +1,26 @@
 import type { Workbook } from '../../engine/workbook';
-import type { CellPosition } from './geometry';
+import { navigate, type Navigation, type SheetContents } from './navigation';
+import { single, type Selection } from './selection';
+
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 2;
 
 export interface ViewState {
   /** The identifier of the sheet that is shown. */
   readonly sheet: string;
-  readonly active: CellPosition;
+  readonly selection: Selection;
   /** The text of the entry being typed, or `null` when there is none. */
   readonly entry: string | null;
+  /** The size of the grid, where 1 is 100%. */
+  readonly zoom: number;
+  /** Whether End was pressed, so that the next arrow jumps as Ctrl+arrow. */
+  readonly endMode: boolean;
 }
 
 /**
  * What the user is looking at and doing in a workbook: the sheet, the
- * active cell, and the entry being typed. The grid edits it, and the parts
- * of the window around the grid read it.
+ * selection, the entry being typed and the zoom. The grid edits it, and
+ * the parts of the window around the grid read it.
  */
 export class View {
   private current: ViewState;
@@ -21,8 +29,10 @@ export class View {
   constructor(private readonly workbook: Workbook) {
     this.current = {
       sheet: workbook.sheets[0]!.id,
-      active: { row: 0, col: 0 },
+      selection: single({ row: 0, col: 0 }),
       entry: null,
+      zoom: 1,
+      endMode: false,
     };
   }
 
@@ -37,10 +47,26 @@ export class View {
     return () => this.listeners.delete(listener);
   };
 
-  /** Makes a cell the active one, after committing an entry that is waiting. */
-  select(cell: CellPosition): void {
+  /** Changes the selection, after committing an entry that is waiting. */
+  select(selection: Selection): void {
     this.commit();
-    this.change({ active: cell });
+    this.change({ selection, endMode: false });
+  }
+
+  /** Moves the selection by the keyboard, after committing a waiting entry. */
+  navigate(navigation: Navigation): void {
+    if (navigation.type === 'endMode') {
+      this.change({ endMode: !this.current.endMode });
+      return;
+    }
+    this.commit();
+    const { workbook } = this;
+    const { sheet, selection } = this.current;
+    const contents: SheetContents = {
+      isEmpty: (row, col) => workbook.cell(sheet, row, col).value === null,
+      extent: () => workbook.extent(sheet),
+    };
+    this.select(navigate(selection, navigation, contents));
   }
 
   /** Starts an entry in the active cell, or replaces the text of the one there. */
@@ -50,15 +76,24 @@ export class View {
 
   /** Writes the entry to the active cell. Does nothing without an entry. */
   commit(): void {
-    const { sheet, active, entry } = this.current;
+    const { sheet, selection, entry } = this.current;
     if (entry === null) return;
     this.change({ entry: null });
-    this.workbook.execute({ type: 'setCell', sheet, ...active, input: entry });
+    const { row, col } = selection.active;
+    this.workbook.execute({ type: 'setCell', sheet, row, col, input: entry });
   }
 
   /** Abandons the entry. */
   cancel(): void {
     this.change({ entry: null });
+  }
+
+  /** Sets the zoom, kept between 50% and 200% and in whole percents. */
+  zoomTo(zoom: number): void {
+    const percent = Math.round(
+      Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
+    );
+    this.change({ zoom: percent / 100 });
   }
 
   private change(change: Partial<ViewState>): void {

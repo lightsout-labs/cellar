@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cellName, createWorkbook, Workbook } from './index';
+import {
+  cellName,
+  createWorkbook,
+  SHEET_COLUMNS,
+  SHEET_ROWS,
+  Workbook,
+} from './index';
 
 function setup() {
   const workbook = createWorkbook();
@@ -133,5 +139,58 @@ describe('workbook', () => {
     expect(cellName(9, 26)).toBe('AA10');
     expect(cellName(0, 701)).toBe('ZZ1');
     expect(cellName(0, 702)).toBe('AAA1');
+  });
+
+  it('totals the numbers of ranges and counts the cells that are not empty', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '1');
+    set(1, 0, '2');
+    set(2, 0, 'text');
+    set(0, 1, '=A1+A2');
+    set(5, 5, '100'); // Outside both ranges.
+    const ranges = [
+      { top: 0, left: 0, bottom: 3, right: 0 },
+      { top: 0, left: 1, bottom: 0, right: 1 },
+    ];
+    expect(workbook.aggregate(sheet, ranges)).toEqual({
+      count: 4,
+      numbers: 3,
+      sum: 6,
+    });
+    expect(
+      workbook.aggregate(sheet, [{ top: 10, left: 10, bottom: 20, right: 20 }]),
+    ).toEqual({ count: 0, numbers: 0, sum: 0 });
+  });
+
+  it('totals a whole sheet of 100,000 by 100 cells quickly', () => {
+    const columns = Array.from({ length: SHEET_COLUMNS }, () =>
+      Array.from({ length: SHEET_ROWS }, () => 1),
+    );
+    const workbook = Workbook.fromSnapshot({
+      version: 1,
+      name: 'Big',
+      sheets: [{ id: 's', name: 'S', columns, formulas: [] }],
+    });
+    const whole = {
+      top: 0,
+      left: 0,
+      bottom: SHEET_ROWS - 1,
+      right: SHEET_COLUMNS - 1,
+    };
+    const start = performance.now();
+    expect(workbook.aggregate('s', [whole]).sum).toBe(
+      SHEET_ROWS * SHEET_COLUMNS,
+    );
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it('knows how far the cells in use extend', () => {
+    const { workbook, sheet, set } = setup();
+    expect(workbook.extent(sheet)).toEqual({ rows: 0, cols: 0 });
+    set(4, 1, '1');
+    set(2, 6, '=B5+1');
+    expect(workbook.extent(sheet)).toEqual({ rows: 5, cols: 7 });
+    set(4, 1, ''); // An emptied cell is no longer in use.
+    expect(workbook.extent(sheet)).toEqual({ rows: 3, cols: 7 });
   });
 });

@@ -9,6 +9,7 @@
   --muted: #6d6863;
   --accent: #9b2c4e;
   --accent-soft: #f5e3e9;
+  --selection: rgb(155 44 78 / 10%);
   --shadow: 0 4px 12px rgb(0 0 0 / 12%);
   --radius: 6px;
   --transition: 120ms ease-out;
@@ -24,6 +25,7 @@
   --muted: #a39e99;
   --accent: #ec8fab;
   --accent-soft: #4b2a36;
+  --selection: rgb(236 143 171 / 16%);
   --shadow: 0 4px 12px rgb(0 0 0 / 40%);
 }
 
