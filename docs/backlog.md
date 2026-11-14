@@ -439,7 +439,8 @@ Notes:
 
 ## S10: Functions: text, dates, lookup and information
 
-Status: In progress
+Status: Done
+PR: #14
 
 Acceptance criteria:
 - The text functions return Excel's results for the examples in Excel's
