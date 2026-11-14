@@ -227,25 +227,168 @@
 .sheetTabs {
   display: flex;
   flex: none;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
   height: 32px;
   padding: 0 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
 
-.sheetTab {
+.tabStrip {
   display: flex;
-  align-items: center;
-  padding: 0 16px;
-  color: var(--muted);
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.sheetTab[aria-current='true'] {
+.sheetTab {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+  transition:
+    background-color var(--transition),
+    color var(--transition);
+}
+
+.sheetTab:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sheetTab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sheetTab[aria-selected='true'] {
   background: var(--background);
   box-shadow: inset 0 -2px var(--accent);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* A color the user gave the tab shows along its bottom edge. */
+.sheetTab[data-colored] {
+  box-shadow: inset 0 -3px var(--tab-color);
+}
+
+/* Where the tab being dragged would go. */
+.sheetTab[data-drop]::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  content: '';
+}
+
+.sheetTab[data-drop='before']::before {
+  left: 0;
+}
+
+.sheetTab[data-drop='after']::before {
+  right: 0;
+}
+
+.nameEditor {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.nameInput {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.nameInput[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.nameProblem {
+  position: fixed;
+  padding: 4px 8px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--background);
+  box-shadow: var(--shadow);
+  color: var(--danger);
+  font-size: 12px;
+  white-space: nowrap;
+  animation: appear var(--transition);
+}
+
+/* Context menus. */
+
+.menu {
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--background);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  animation: appear var(--transition);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition);
+}
+
+.menuItem[data-highlighted],
+.menuItem[data-state='open'] {
+  background: var(--hover);
+}
+
+.menuItem[data-disabled] {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.menuSeparator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.menuCheck {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.swatch {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
 }
 
 .statusBar {

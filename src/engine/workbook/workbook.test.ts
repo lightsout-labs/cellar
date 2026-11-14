@@ -479,3 +479,149 @@ describe('undo and redo', () => {
     expect(opened.canUndo).toBe(false);
   });
 });
+
+describe('sheets', () => {
+  const names = (workbook: Workbook) =>
+    workbook.sheets.map((sheet) => sheet.name);
+
+  it('adds empty sheets with the next free names, where asked', () => {
+    const { workbook, sheet } = setup();
+    const added = workbook.execute({ type: 'addSheet', index: 1 });
+    expect(names(workbook)).toEqual(['Sheet1', 'Sheet2']);
+    expect(added).toEqual({ sheet: workbook.sheets[1]!.id, ranges: [] });
+    workbook.execute({ type: 'addSheet', index: 0 });
+    expect(names(workbook)).toEqual(['Sheet3', 'Sheet1', 'Sheet2']);
+    expect(new Set(workbook.sheets.map((each) => each.id)).size).toBe(3);
+    expect(workbook.cell(added.sheet, 0, 0).value).toBeNull();
+    expect(workbook.sheets[1]!.id).toBe(sheet);
+  });
+
+  it('duplicates a sheet beside it, with its contents and formats', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '50%');
+    set(1, 0, '=A1+1');
+    const { sheet: copy } = workbook.execute({
+      type: 'addSheet',
+      index: 1,
+      copyOf: sheet,
+    });
+    expect(names(workbook)).toEqual(['Sheet1', 'Sheet1 (2)']);
+    expect(workbook.cell(copy, 0, 0).display).toBe('50%');
+    expect(workbook.cell(copy, 1, 0).formula).toBe('=A1+1');
+    // The copy is a sheet of its own.
+    set(0, 0, '1');
+    expect(workbook.cell(copy, 1, 0).value).toBe(1.5);
+    workbook.execute({ type: 'addSheet', index: 2, copyOf: sheet });
+    expect(names(workbook)).toEqual(['Sheet1', 'Sheet1 (2)', 'Sheet1 (3)']);
+  });
+
+  it('renames, recolors and moves a sheet', () => {
+    const { workbook, sheet } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({ type: 'setSheet', sheet, name: 'Sales' });
+    workbook.execute({ type: 'setSheet', sheet, color: '#e5484d' });
+    expect(workbook.sheets[0]).toEqual({
+      id: sheet,
+      name: 'Sales',
+      color: '#e5484d',
+    });
+    workbook.execute({ type: 'setSheet', sheet, index: 1 });
+    expect(names(workbook)).toEqual(['Sheet2', 'Sales']);
+    workbook.execute({ type: 'setSheet', sheet, color: null });
+    expect(workbook.sheets[1]).toEqual({ id: sheet, name: 'Sales' });
+  });
+
+  it('deletes a sheet, and shows the one that takes its place', () => {
+    const { workbook, sheet } = setup();
+    const { sheet: second } = workbook.execute({ type: 'addSheet', index: 1 });
+    const { sheet: third } = workbook.execute({ type: 'addSheet', index: 2 });
+    expect(workbook.execute({ type: 'deleteSheet', sheet: second })).toEqual({
+      sheet: third,
+      ranges: [],
+    });
+    expect(workbook.execute({ type: 'deleteSheet', sheet: third })).toEqual({
+      sheet,
+      ranges: [],
+    });
+    expect(names(workbook)).toEqual(['Sheet1']);
+  });
+
+  it('refuses to delete the last sheet', () => {
+    const { workbook, sheet } = setup();
+    expect(() => workbook.execute({ type: 'deleteSheet', sheet })).toThrow();
+    expect(names(workbook)).toEqual(['Sheet1']);
+    expect(workbook.canUndo).toBe(false);
+  });
+
+  it('tells what is wrong with a sheet name, as Excel does', () => {
+    const { workbook, sheet } = setup();
+    const { sheet: second } = workbook.execute({ type: 'addSheet', index: 1 });
+    expect(workbook.sheetNameProblem('Budget 2026', sheet)).toBeNull();
+    expect(workbook.sheetNameProblem('sheet1', sheet)).toBeNull();
+    expect(workbook.sheetNameProblem('SHEET1', second)).toBe('taken');
+    expect(workbook.sheetNameProblem('  ', sheet)).toBe('empty');
+    expect(workbook.sheetNameProblem('x'.repeat(32), sheet)).toBe('tooLong');
+    for (const name of ['a:b', 'a/b', 'a\\b', 'a?', 'a*', '[a]', "'a"]) {
+      expect(workbook.sheetNameProblem(name, sheet)).toBe('character');
+    }
+    expect(() =>
+      workbook.execute({ type: 'setSheet', sheet, name: 'Sheet2' }),
+    ).toThrow();
+    expect(names(workbook)).toEqual(['Sheet1', 'Sheet2']);
+  });
+
+  it('undoes and redoes each change to the sheets, showing the sheet it changed', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '7');
+    const before = workbook.toSnapshot();
+    const { sheet: copy } = workbook.execute({
+      type: 'addSheet',
+      index: 1,
+      copyOf: sheet,
+    });
+    workbook.execute({
+      type: 'setSheet',
+      sheet: copy,
+      name: 'Copy',
+      color: '#30a46c',
+    });
+    workbook.execute({ type: 'setSheet', sheet: copy, index: 0 });
+    workbook.execute({ type: 'deleteSheet', sheet });
+    const after = workbook.toSnapshot();
+
+    expect(workbook.undo()).toEqual({ sheet, ranges: [] });
+    expect(names(workbook)).toEqual(['Copy', 'Sheet1']);
+    expect(workbook.cell(sheet, 0, 0).value).toBe(7);
+    expect(workbook.undo()).toEqual({ sheet: copy, ranges: [] });
+    expect(names(workbook)).toEqual(['Sheet1', 'Copy']);
+    workbook.undo();
+    expect(workbook.sheets[1]).toEqual({ id: copy, name: 'Sheet1 (2)' });
+    expect(workbook.undo()).toEqual({ sheet, ranges: [] });
+    expect(workbook.toSnapshot()).toEqual(before);
+
+    for (let step = 0; step < 4; step++) workbook.redo();
+    expect(workbook.toSnapshot()).toEqual(after);
+  });
+
+  it('tells listeners of sheet changes as commands that replay them', () => {
+    const { workbook, sheet, set } = setup();
+    const replay = createWorkbook();
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '1');
+    workbook.execute({ type: 'addSheet', index: 1 });
+    const { sheet: copy } = workbook.execute({
+      type: 'addSheet',
+      index: 0,
+      copyOf: sheet,
+    });
+    workbook.execute({ type: 'setSheet', sheet: copy, name: 'Copy' });
+    workbook.execute({ type: 'deleteSheet', sheet });
+    workbook.undo();
+    workbook.undo();
+    workbook.redo();
+    const stored = JSON.parse(JSON.stringify(replay.toSnapshot()));
+    expect(Workbook.fromSnapshot(stored).toSnapshot()).toEqual(
+      workbook.toSnapshot(),
+    );
+  });
+});

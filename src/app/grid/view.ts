@@ -1,10 +1,18 @@
-import type { Change, Workbook } from '../../engine/workbook';
+import type { Change, Command, Workbook } from '../../engine/workbook';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import { covering, single, type Selection } from './selection';
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2;
+
+const START = { row: 0, col: 0 };
+
+/** A change to the sheets of a workbook. */
+export type SheetCommand = Extract<
+  Command,
+  { type: 'addSheet' | 'deleteSheet' | 'setSheet' }
+>;
 
 /** An entry being typed into the active cell. */
 export interface Entry {
@@ -34,11 +42,19 @@ export interface ViewState {
 export class View {
   private current: ViewState;
   private readonly listeners = new Set<() => void>();
+  /** The sheets in tab order as of the last change to the workbook. */
+  private sheetIds: string[];
 
+  /**
+   * Make it right after the workbook, so that it hears of each change
+   * first: it leaves a deleted sheet before anything reads it.
+   */
   constructor(private readonly workbook: Workbook) {
+    this.sheetIds = workbook.sheets.map((sheet) => sheet.id);
+    workbook.subscribe(() => this.keepSheet());
     this.current = {
       sheet: workbook.sheets[0]!.id,
-      selection: single({ row: 0, col: 0 }),
+      selection: single(START),
       entry: null,
       zoom: 1,
       endMode: false,
@@ -112,6 +128,22 @@ export class View {
     this.workbook.execute({ type: 'setCell', sheet, row, col, input });
   }
 
+  /** Shows another sheet, at A1, after committing a waiting entry. */
+  showSheet(sheet: string): void {
+    this.commit();
+    this.change({ sheet, selection: single(START), endMode: false });
+  }
+
+  /**
+   * Makes a change to the sheets, after committing a waiting entry, and
+   * shows a sheet it adds.
+   */
+  execute(command: SheetCommand): void {
+    this.commit();
+    const change = this.workbook.execute(command);
+    if (command.type === 'addSheet') this.showSheet(change.sheet);
+  }
+
   /** Empties the selected cells. */
   clear(): void {
     const { sheet, selection } = this.current;
@@ -146,14 +178,37 @@ export class View {
 
   private reverse(run: () => Change | null): void {
     this.cancel();
+    const count = this.workbook.sheets.length;
     const change = run();
-    if (change) {
+    if (!change) return;
+    // A deleted sheet leaves the shown one, unless it was the shown one,
+    // which `keepSheet` has already left.
+    if (this.workbook.sheets.length < count) return;
+    if (change.ranges.length > 0) {
       this.change({
         sheet: change.sheet,
         selection: covering(change.ranges),
         endMode: false,
       });
+    } else if (change.sheet !== this.current.sheet) {
+      this.showSheet(change.sheet);
     }
+  }
+
+  /** When the shown sheet is deleted, shows the one that takes its place. */
+  private keepSheet(): void {
+    const ids = this.workbook.sheets.map((sheet) => sheet.id);
+    const { sheet } = this.current;
+    if (!ids.includes(sheet)) {
+      const index = Math.min(this.sheetIds.indexOf(sheet), ids.length - 1);
+      this.change({
+        sheet: ids[index]!,
+        selection: single(START),
+        entry: null,
+        endMode: false,
+      });
+    }
+    this.sheetIds = ids;
   }
 
   private change(change: Partial<ViewState>): void {

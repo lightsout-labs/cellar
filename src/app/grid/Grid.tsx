@@ -125,6 +125,15 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     element.scrollTo(element.scrollLeft * ratio, element.scrollTop * ratio);
   }, [zoom]);
 
+  // Another sheet opens at its top left, ready for the keyboard.
+  const shownSheet = useRef(sheet);
+  useLayoutEffect(() => {
+    if (shownSheet.current === sheet) return;
+    shownSheet.current = sheet;
+    scroller.current!.scrollTo(0, 0);
+    scroller.current!.focus();
+  }, [sheet]);
+
   // When an entry in the formula bar ends, the keyboard comes back to the
   // grid, which shows the cell it moved to.
   useEffect(() => {

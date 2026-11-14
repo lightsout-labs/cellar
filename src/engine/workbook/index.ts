@@ -38,7 +38,47 @@ export type Command =
       readonly sheet: string;
       readonly ranges: readonly Range[];
       readonly cells: readonly CellContents[];
+    }
+  | {
+      /**
+       * Adds an empty sheet at a place in the tab order, or a copy of the
+       * sheet `copyOf`. When absent, the workbook gives the identifier and
+       * the next free name, and adds them to the command its listeners get.
+       */
+      readonly type: 'addSheet';
+      readonly index: number;
+      readonly copyOf?: string;
+      readonly sheet?: string;
+      readonly name?: string;
+    }
+  | {
+      /** Deletes a sheet; the last one cannot be deleted (R10). */
+      readonly type: 'deleteSheet';
+      readonly sheet: string;
+    }
+  | {
+      /** Puts a deleted sheet back: how the workbook undoes a deletion. */
+      readonly type: 'restoreSheet';
+      readonly index: number;
+      readonly contents: SheetSnapshot;
+    }
+  | {
+      /**
+       * Renames, recolors or moves a sheet to a place in the tab order. A
+       * `null` color removes the color.
+       */
+      readonly type: 'setSheet';
+      readonly sheet: string;
+      readonly name?: string;
+      readonly color?: string | null;
+      readonly index?: number;
     };
+
+/** Why a sheet name cannot be used, as Excel refuses it. */
+export type SheetNameProblem = 'empty' | 'tooLong' | 'character' | 'taken';
+
+/** Excel's limit on the length of a sheet name. */
+const SHEET_NAME_LIMIT = 31;
 
 /** A cell's contents and style, as a `restore` command puts them back. */
 export interface CellContents {
@@ -51,7 +91,11 @@ export interface CellContents {
   readonly style?: Style;
 }
 
-/** The cells that an undo or a redo changed. */
+/**
+ * The cells that a change changed, or, for a change to the sheets, no
+ * ranges and the sheet to show: the one added, changed or put back, or the
+ * one that took the place of a deleted one.
+ */
 export interface Change {
   readonly sheet: string;
   readonly ranges: readonly Range[];
@@ -101,6 +145,8 @@ export interface Style {
 export interface SheetInfo {
   readonly id: string;
   readonly name: string;
+  /** The color of the tab, as `#rrggbb`; absent for none. */
+  readonly color?: string;
 }
 
 /** A stored value: formulas keep their text, not their result. */
@@ -141,7 +187,10 @@ interface Formula {
   readonly ast: Ast;
 }
 
-interface Sheet extends SheetInfo {
+interface Sheet {
+  readonly id: string;
+  name: string;
+  color?: string;
   /** Values by column, then by row. Both levels are sparse. */
   readonly columns: Constant[][];
   readonly formulas: Map<string, Formula>;
@@ -151,7 +200,6 @@ interface Sheet extends SheetInfo {
   readonly results: Map<string, Value>;
 }
 
-/** A command that undoes or redoes another. */
 type Restore = Extract<Command, { type: 'restore' }>;
 
 const key = (row: number, col: number) => `${row},${col}`;
@@ -177,9 +225,9 @@ export class Workbook {
   /** The index of each style in `styles`, by its JSON text. */
   private readonly styleIndex: Map<string, number>;
   /** The commands that undo the last changes, the latest last. */
-  private readonly undoList: Restore[] = [];
+  private readonly undoList: Command[] = [];
   /** The commands that redo the changes undone, the latest undone last. */
-  private readonly redoList: Restore[] = [];
+  private readonly redoList: Command[] = [];
 
   private constructor(
     private readonly name: string,
@@ -202,22 +250,7 @@ export class Workbook {
     if (snapshot.version !== 1) {
       throw new Error(`Unknown snapshot version: ${String(snapshot.version)}`);
     }
-    const sheets = snapshot.sheets.map((sheet): Sheet => {
-      const formulas = new Map<string, Formula>();
-      for (const [row, col, text] of sheet.formulas) {
-        const ast = parse(text.slice(1));
-        if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
-        formulas.set(key(row, col), { row, col, text, ast });
-      }
-      return {
-        id: sheet.id,
-        name: sheet.name,
-        columns: sheet.columns.map((column) => [...column]),
-        formulas,
-        styleIds: (sheet.styleIds ?? []).map((column) => [...column]),
-        results: new Map(),
-      };
-    });
+    const sheets = snapshot.sheets.map(sheetOf);
     const workbook = new Workbook(
       snapshot.name,
       sheets,
@@ -231,36 +264,42 @@ export class Workbook {
     return {
       version: 1,
       name: this.name,
-      sheets: this.sheetList.map((sheet) => ({
-        id: sheet.id,
-        name: sheet.name,
-        columns: Array.from(sheet.columns, (column) =>
-          Array.from(column ?? [], (value) => value ?? null),
-        ),
-        formulas: Array.from(
-          sheet.formulas.values(),
-          ({ row, col, text }): [number, number, string] => [row, col, text],
-        ),
-        styleIds: Array.from(sheet.styleIds, (column) =>
-          Array.from(column ?? [], (id) => id ?? 0),
-        ),
-      })),
+      sheets: this.sheetList.map(snapshotOf),
       styles: [...this.styles],
     };
   }
 
   /** The sheets in tab order. */
   get sheets(): readonly SheetInfo[] {
-    return this.sheetList.map(({ id, name }) => ({ id, name }));
+    return this.sheetList.map(({ id, name, color }) => ({
+      id,
+      name,
+      ...(color !== undefined && { color }),
+    }));
   }
 
   /**
-   * Makes a change, which can then be undone; what could be redone is
-   * forgotten.
+   * Why `name` cannot be the name of the sheet `sheetId`, or `null` when it
+   * can. Names differ when they differ in more than case, as in Excel.
    */
-  execute(command: Command): void {
+  sheetNameProblem(name: string, sheetId: string): SheetNameProblem | null {
+    if (name.trim() === '') return 'empty';
+    if (name.length > SHEET_NAME_LIMIT) return 'tooLong';
+    if (/[:\\/?*[\]]/.test(name) || /^'|'$/.test(name)) return 'character';
+    const folded = name.toLowerCase();
+    const taken = this.sheetList.some(
+      (sheet) => sheet.id !== sheetId && sheet.name.toLowerCase() === folded,
+    );
+    return taken ? 'taken' : null;
+  }
+
+  /**
+   * Makes a change, which can then be undone, and gives what it changed;
+   * what could be redone is forgotten.
+   */
+  execute(command: Command): Change {
     this.redoList.length = 0;
-    this.apply(command, this.undoList);
+    return this.apply(command, this.undoList);
   }
 
   /** Undoes the last change, and gives the cells it changed. */
@@ -375,18 +414,35 @@ export class Workbook {
   }
 
   /** Runs the last command of `from`, and keeps its reverse in `to`. */
-  private reverse(from: Restore[], to: Restore[]): Change | null {
+  private reverse(from: Command[], to: Command[]): Change | null {
     const command = from.pop();
-    if (!command) return null;
-    this.apply(command, to);
-    return { sheet: command.sheet, ranges: command.ranges };
+    return command ? this.apply(command, to) : null;
   }
 
   /**
-   * Runs a command, keeps the command that reverses it in `history`, and
-   * then tells the listeners.
+   * Runs a command, keeps the command that reverses it in `history`, tells
+   * the listeners, and gives what it changed.
    */
-  private apply(command: Command, history?: Restore[]): void {
+  private apply(command: Command, history?: Command[]): Change {
+    const { executed, reverse, change } =
+      command.type === 'setCell' ||
+      command.type === 'clear' ||
+      command.type === 'restore'
+        ? this.changeCells(command)
+        : this.changeSheets(command);
+    // Any formula may read the changed cells, so every result is stale.
+    for (const each of this.sheetList) each.results.clear();
+    if (history) {
+      history.push(reverse);
+      if (history.length > UNDO_LIMIT) history.shift();
+    }
+    for (const listener of this.listeners) listener(executed);
+    return change;
+  }
+
+  private changeCells(
+    command: Extract<Command, { type: 'setCell' | 'clear' | 'restore' }>,
+  ): Applied {
     const sheet = this.sheet(command.sheet);
     const ranges =
       command.type === 'setCell'
@@ -405,7 +461,7 @@ export class Workbook {
       ranges,
       cells: this.contents(sheet, ranges),
     };
-    let executed = command;
+    let executed: Command = command;
     if (command.type === 'setCell') {
       const year = this.setCell(sheet, command);
       // Listeners that record the command replay it with the same date.
@@ -415,13 +471,110 @@ export class Workbook {
     } else {
       this.restore(sheet, command);
     }
-    // Any formula may read the changed cells, so every result is stale.
-    for (const each of this.sheetList) each.results.clear();
-    if (history) {
-      history.push(reverse);
-      if (history.length > UNDO_LIMIT) history.shift();
+    return { executed, reverse, change: { sheet: sheet.id, ranges } };
+  }
+
+  private changeSheets(
+    command: Extract<
+      Command,
+      { type: 'addSheet' | 'deleteSheet' | 'restoreSheet' | 'setSheet' }
+    >,
+  ): Applied {
+    const list = this.sheetList;
+    const shown = (sheet: string): Change => ({ sheet, ranges: [] });
+    switch (command.type) {
+      case 'addSheet': {
+        const source = command.copyOf ? this.sheet(command.copyOf) : null;
+        const sheet = command.sheet ?? this.freeId();
+        const name =
+          command.name ??
+          (source ? this.copyName(source.name) : this.freeName());
+        const contents = source
+          ? { ...snapshotOf(source), id: sheet, name }
+          : { id: sheet, name, columns: [], formulas: [] };
+        this.insert(command.index, sheetOf(contents));
+        return {
+          executed: { ...command, sheet, name },
+          reverse: { type: 'deleteSheet', sheet },
+          change: shown(sheet),
+        };
+      }
+      case 'restoreSheet':
+        this.insert(command.index, sheetOf(command.contents));
+        return {
+          executed: command,
+          reverse: { type: 'deleteSheet', sheet: command.contents.id },
+          change: shown(command.contents.id),
+        };
+      case 'deleteSheet': {
+        const sheet = this.sheet(command.sheet);
+        if (list.length === 1) throw new Error('The last sheet stays');
+        const index = list.indexOf(sheet);
+        list.splice(index, 1);
+        return {
+          executed: command,
+          reverse: { type: 'restoreSheet', index, contents: snapshotOf(sheet) },
+          change: shown(list[Math.min(index, list.length - 1)]!.id),
+        };
+      }
+      case 'setSheet': {
+        const sheet = this.sheet(command.sheet);
+        const { name, color, index } = command;
+        if (name !== undefined) {
+          const problem = this.sheetNameProblem(name, sheet.id);
+          if (problem) throw new Error(`Sheet name ${problem}: ${name}`);
+        }
+        const reverse: Command = {
+          type: 'setSheet',
+          sheet: sheet.id,
+          ...(name !== undefined && { name: sheet.name }),
+          ...(color !== undefined && { color: sheet.color ?? null }),
+          ...(index !== undefined && { index: list.indexOf(sheet) }),
+        };
+        if (name !== undefined) sheet.name = name;
+        if (color === null) delete sheet.color;
+        else if (color !== undefined) sheet.color = color;
+        if (index !== undefined) {
+          list.splice(list.indexOf(sheet), 1);
+          this.insert(index, sheet);
+        }
+        return { executed: command, reverse, change: shown(sheet.id) };
+      }
     }
-    for (const listener of this.listeners) listener(executed);
+  }
+
+  /** Puts a sheet at a place in the tab order, kept within the tabs. */
+  private insert(index: number, sheet: Sheet): void {
+    const list = this.sheetList;
+    if (list.some((each) => each.id === sheet.id)) {
+      throw new Error(`Sheet exists: ${sheet.id}`);
+    }
+    list.splice(Math.max(0, Math.min(index, list.length)), 0, sheet);
+  }
+
+  /** The first identifier `sheetN` that no sheet has. */
+  private freeId(): string {
+    const ids = new Set(this.sheetList.map((sheet) => sheet.id));
+    let number = 1;
+    while (ids.has(`sheet${number}`)) number++;
+    return `sheet${number}`;
+  }
+
+  /** The first name `SheetN` that is free, from the number of sheets on. */
+  private freeName(): string {
+    let number = this.sheetList.length + 1;
+    while (this.sheetNameProblem(`Sheet${number}`, '')) number++;
+    return `Sheet${number}`;
+  }
+
+  /** The name of a copy, as Excel gives it: `Sheet1 (2)`. */
+  private copyName(name: string): string {
+    const base = name.replace(/ \(\d+\)$/, '');
+    for (let number = 2; ; number++) {
+      const suffix = ` (${number})`;
+      const copy = base.slice(0, SHEET_NAME_LIMIT - suffix.length) + suffix;
+      if (!this.sheetNameProblem(copy, '')) return copy;
+    }
   }
 
   /** The cells of ranges that have contents or a style other than the default. */
@@ -546,6 +699,50 @@ export class Workbook {
     sheet.results.set(cellKey, result);
     return result;
   }
+}
+
+/** A command, as its listeners get it, and the command that reverses it. */
+interface Applied {
+  readonly executed: Command;
+  readonly reverse: Command;
+  readonly change: Change;
+}
+
+/** A sheet of the workbook, made from a snapshot of it. */
+function sheetOf(snapshot: SheetSnapshot): Sheet {
+  const formulas = new Map<string, Formula>();
+  for (const [row, col, text] of snapshot.formulas) {
+    const ast = parse(text.slice(1));
+    if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
+    formulas.set(key(row, col), { row, col, text, ast });
+  }
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    ...(snapshot.color !== undefined && { color: snapshot.color }),
+    columns: snapshot.columns.map((column) => [...column]),
+    formulas,
+    styleIds: (snapshot.styleIds ?? []).map((column) => [...column]),
+    results: new Map(),
+  };
+}
+
+function snapshotOf(sheet: Sheet): SheetSnapshot {
+  return {
+    id: sheet.id,
+    name: sheet.name,
+    ...(sheet.color !== undefined && { color: sheet.color }),
+    columns: Array.from(sheet.columns, (column) =>
+      Array.from(column ?? [], (value) => value ?? null),
+    ),
+    formulas: Array.from(
+      sheet.formulas.values(),
+      ({ row, col, text }): [number, number, string] => [row, col, text],
+    ),
+    styleIds: Array.from(sheet.styleIds, (column) =>
+      Array.from(column ?? [], (id) => id ?? 0),
+    ),
+  };
 }
 
 /** Empties the cells of a range of a sheet, leaving their styles. */

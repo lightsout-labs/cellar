@@ -76,36 +76,6 @@ export function FormulaBar({
 }
 
 /**
- * One tab for each sheet of the workbook, the one shown marked. They only
- * display until there is a second sheet to switch to, so they are a list
- * and not yet controls.
- */
-export function SheetTabs({
-  workbook,
-  view,
-}: {
-  workbook: Workbook;
-  view: View;
-}) {
-  const t = useTranslation();
-  const { sheet } = useSyncExternalStore(view.subscribe, () => view.state);
-  return (
-    <div className={styles.sheetTabs} role="list" aria-label={t('sheets')}>
-      {workbook.sheets.map(({ id, name }) => (
-        <div
-          key={id}
-          className={styles.sheetTab}
-          role="listitem"
-          aria-current={id === sheet}
-        >
-          {name}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
  * Whether the grid is waiting or an entry is being typed, the average,
  * count and sum of the selected cells, and the zoom.
  */

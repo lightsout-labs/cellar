@@ -8,7 +8,8 @@ import { restoreWorkbook, startAutosave } from './autosave';
 import { Translation } from './controls';
 import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
-import { FormulaBar, SheetTabs, StatusBar } from './Shell';
+import { FormulaBar, StatusBar } from './Shell';
+import { SheetTabs } from './SheetTabs';
 import { shortcut } from './shortcuts';
 import styles from './Shell.module.css';
 import { startingTheme, type Theme } from './theme';
@@ -72,7 +73,8 @@ export function App({ platform }: { platform: Platform }) {
     if (!open) return;
     const { view } = open;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (view.state.entry) return;
+      // A text box, such as a sheet name being typed, undoes its own typing.
+      if (view.state.entry || isTextBox(event.target)) return;
       const command = shortcut(
         {
           key: event.key,
@@ -120,4 +122,8 @@ export function App({ platform }: { platform: Platform }) {
       </TooltipProvider>
     </Translation>
   );
+}
+
+function isTextBox(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement && target.type === 'text';
 }

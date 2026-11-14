@@ -202,6 +202,58 @@ describe('View', () => {
     expect(workbook.cell(sheet, 1, 1).value).toBeNull();
   });
 
+  it('shows another sheet at A1, committing the entry first', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    const second = workbook.sheets[1]!.id;
+    view.select(single({ row: 3, col: 3 }));
+    view.type('5');
+    view.showSheet(second);
+    expect(workbook.cell(sheet, 3, 3).value).toBe(5);
+    expect(view.state.sheet).toBe(second);
+    expect(view.state.selection).toEqual(single({ row: 0, col: 0 }));
+  });
+
+  it('shows a sheet it adds, and the neighbor of the shown sheet it deletes', () => {
+    const { workbook, view, sheet } = setup();
+    view.execute({ type: 'addSheet', index: 1 });
+    const second = workbook.sheets[1]!.id;
+    expect(view.state.sheet).toBe(second);
+    // A change to another sheet leaves the shown one.
+    view.select(single({ row: 2, col: 2 }));
+    view.execute({ type: 'setSheet', sheet, name: 'First' });
+    view.execute({ type: 'setSheet', sheet: second, index: 0 });
+    expect(view.state.sheet).toBe(second);
+    expect(view.state.selection).toEqual(single({ row: 2, col: 2 }));
+    view.execute({ type: 'deleteSheet', sheet: second });
+    expect(view.state.sheet).toBe(sheet);
+  });
+
+  it('shows the sheet whose change it undoes or redoes', () => {
+    const { workbook, view, sheet } = setup();
+    // Whatever reads the shown sheet on a change, as the grid does, finds it.
+    workbook.subscribe(() => workbook.cell(view.state.sheet, 0, 0));
+    view.execute({ type: 'addSheet', index: 1 });
+    const second = workbook.sheets[1]!.id;
+    view.select(single({ row: 4, col: 4 }));
+    view.undo();
+    expect(view.state.sheet).toBe(sheet);
+    expect(view.state.selection).toEqual(single({ row: 0, col: 0 }));
+    view.redo();
+    expect(view.state.sheet).toBe(second);
+    // Undoing the addition of a sheet that is not shown stays where it is.
+    view.showSheet(sheet);
+    view.undo();
+    expect(view.state.sheet).toBe(sheet);
+    view.redo();
+    view.showSheet(second);
+    view.select(single({ row: 4, col: 4 }));
+    view.execute({ type: 'setSheet', sheet: second, color: '#30a46c' });
+    view.undo();
+    // The same sheet: the selection stays.
+    expect(view.state.selection).toEqual(single({ row: 4, col: 4 }));
+  });
+
   it('zooms between 50% and 200%', () => {
     const { view } = setup();
     view.zoomTo(1.5);
