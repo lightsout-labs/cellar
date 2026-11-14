@@ -264,7 +264,8 @@ Notes:
 
 ## S06: Multiple sheets
 
-Status: In progress
+Status: Done
+PR: #9
 
 Acceptance criteria:
 - The user can add, rename, delete and duplicate sheets from the sheet tabs.
