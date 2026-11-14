@@ -1,4 +1,4 @@
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
 import { cellName, type Workbook } from '../../engine/workbook';
 import { EDITOR, MAC, staysInEntry } from '../grid/Grid';
@@ -165,5 +165,40 @@ export function StatusBar({
         <span className={styles.percent}>{percent}%</span>
       </div>
     </footer>
+  );
+}
+
+/**
+ * A message about the last action, such as a file that could not be
+ * opened, until the user closes it.
+ */
+export function MessageBar({
+  text,
+  error,
+  onClose,
+}: {
+  text: string;
+  error: boolean;
+  onClose: () => void;
+}) {
+  const t = useTranslation();
+  return (
+    <div
+      className={styles.message}
+      data-kind={error ? 'error' : 'info'}
+      role="alert"
+    >
+      <span className={styles.messageText}>{text}</span>
+      <Tooltip text={t('message.close.tooltip')}>
+        <button
+          type="button"
+          className={styles.button}
+          aria-label={t('message.close')}
+          onClick={onClose}
+        >
+          <X size={ICON_SIZE} aria-hidden />
+        </button>
+      </Tooltip>
+    </div>
   );
 }

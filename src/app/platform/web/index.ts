@@ -4,7 +4,7 @@ import type {
   Snapshot,
   Style,
 } from '../../../engine/workbook';
-import type { Platform, Stored } from '..';
+import type { ChosenFile, Platform, Stored } from '..';
 
 // The IndexedDB database `gridworks`. `workbooks` has one record for each
 // workbook; `sheets` has one for each sheet, keyed by workbook and sheet;
@@ -155,8 +155,60 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
   await completion(transaction);
 }
 
+// A file input works in every browser; the File System Access API does not.
+function openFile(): Promise<ChosenFile | null> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx';
+    input.hidden = true;
+    let changed = false;
+    input.addEventListener('change', () => {
+      changed = true;
+      input.remove();
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      file
+        .arrayBuffer()
+        .then((buffer) =>
+          resolve({ name: file.name, bytes: new Uint8Array(buffer) }),
+        )
+        .catch(reject);
+    });
+    // Firefox may fire `cancel` just before the `change` of a file chosen,
+    // so a cancellation counts only when no change follows it; a late
+    // answer costs nothing, as no file chosen means nothing to do.
+    input.addEventListener('cancel', () => {
+      setTimeout(() => {
+        if (changed) return;
+        input.remove();
+        resolve(null);
+      }, 1000);
+    });
+    document.body.append(input);
+    input.click();
+  });
+}
+
+// A download: browsers keep it in the downloads folder or ask where.
+function saveFile(name: string, bytes: Uint8Array): Promise<void> {
+  const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Revoked later, as some browsers read the address after the click.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return Promise.resolve();
+}
+
 /** The platform for browsers. */
 export const webPlatform: Platform = {
+  openFile,
+  saveFile,
   workbooks: { load, record, save },
   // A browser that blocks storage throws; the choice is then not remembered.
   preferences: {

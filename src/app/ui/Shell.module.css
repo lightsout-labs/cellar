@@ -465,3 +465,25 @@
   width: 36px;
   text-align: right;
 }
+
+/* A message about the last action, between the ribbon and the formula bar. */
+
+.message {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.message[data-kind='error'] {
+  border-left-color: var(--danger);
+}
+
+.messageText {
+  flex: 1;
+}

@@ -1,5 +1,8 @@
 # 0003: ExcelJS reads and writes `.xlsx` files
 
+Reading is superseded by [ADR 0006](0006-own-xlsx-reader.md): ExcelJS
+was too slow for R47, and only writes.
+
 ## Context
 
 Values, formulas, formatting, column widths, merged cells, sheets, named

@@ -358,7 +358,8 @@ Notes:
 
 ## S08: Opening and saving XLSX files: values, formulas and sheets
 
-Status: Todo
+Status: Done
+PR: #12
 
 Acceptance criteria:
 - The user can open an `.xlsx` file from disk and sees its sheets, values and
@@ -374,6 +375,26 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Firefox under Playwright fires `cancel` before the `change` of a file
+  chosen; a cancel resolved at once lost the file. A 100 ms wait still
+  failed once under parallel load; the wait is now 1 s.
+- `readXlsx` is our own reader over JSZip (ADR 0006); `writeXlsx` uses
+  ExcelJS, loaded on demand. S28 adds reading of formatting, merges,
+  widths, validation, notes and links to the reader.
+- Not read yet, left for later slices: the 1904 date system (dates open
+  four years early), error cells (read as text), the locale-specific
+  built-in number formats 27–36 and 50–58 (open as General), and the
+  `_xlfn.` prefix of newer functions. S09 and S10 must map `_xlfn.` names
+  to the functions they add, both when reading and when writing.
+- Opening a file stores it as a new workbook under a random identifier,
+  named by the preference `workbook`; the one shown before stays stored,
+  for S30's start screen.
+- `shift` has an `offset` move for relative references, which the fill
+  handle and copy and paste can reuse.
+- The message bar under the ribbon (`MessageBar`) is the place for such
+  messages; it has no timer.
 
 ## S09: Functions: math, statistics, logic and conditional totals
 

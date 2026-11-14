@@ -50,6 +50,20 @@ export function parseInput(
   return { value, format: code, year };
 }
 
+/**
+ * The format code of one of Excel's built-in number formats, which files
+ * name by number, or `null` for a number that names none.
+ */
+export function builtinFormat(id: number): string | null {
+  return BUILT_IN.has(id) ? getFormatFromId(id) : null;
+}
+
+// The built-in formats that every language of Excel shares.
+const BUILT_IN = new Set([
+  0, 1, 2, 3, 4, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 37, 38,
+  39, 40, 45, 46, 47, 48, 49,
+]);
+
 /** The text that a cell shows for a value, in a format code. */
 export function formatValue(value: Value, code: string = GENERAL): string {
   if (value === null) return '';

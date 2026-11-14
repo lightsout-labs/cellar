@@ -92,12 +92,18 @@ export interface Context {
   cells(sheet: string | undefined, area: Area): readonly Value[] | ErrorValue;
 }
 
-/** A change to the workbook that references follow. */
-export type Move = {
-  readonly type: 'renameSheet';
-  readonly from: string;
-  readonly to: string;
-};
+/**
+ * A change to the workbook that references follow: a sheet renamed, or the
+ * formula moved by rows and columns, which moves its relative references
+ * as Excel's shared formulas and copies do.
+ */
+export type Move =
+  | {
+      readonly type: 'renameSheet';
+      readonly from: string;
+      readonly to: string;
+    }
+  | { readonly type: 'offset'; readonly rows: number; readonly cols: number };
 
 /** The seven error values of Excel (R13). */
 type ErrorCode =
@@ -469,13 +475,12 @@ export function quoteSheetName(name: string): string {
  * when no reference changes.
  */
 export function shift(ast: Ast, move: Move): Ast {
-  const from = move.from.toLowerCase();
+  const range =
+    move.type === 'offset' ? offset(move) : renamed(move.from, move.to);
   const visit = (node: Ast): Ast => {
     switch (node.type) {
       case 'range':
-        return node.sheet?.toLowerCase() === from
-          ? { ...node, sheet: move.to }
-          : node;
+        return range(node);
       case 'unary':
       case 'percent': {
         const operand = visit(node.operand);
@@ -503,6 +508,60 @@ export function shift(ast: Ast, move: Move): Ast {
     }
   };
   return visit(ast);
+}
+
+type RangeNode = Extract<Ast, { type: 'range' }>;
+
+function renamed(from: string, to: string): (node: RangeNode) => Ast {
+  const folded = from.toLowerCase();
+  return (node) =>
+    node.sheet?.toLowerCase() === folded ? { ...node, sheet: to } : node;
+}
+
+/** Moves relative references; one moved off the sheet becomes `#REF!`. */
+function offset({ rows, cols }: { rows: number; cols: number }) {
+  const move = (corner: Corner): Corner | null => {
+    const row =
+      corner.row === null || corner.rowAbsolute
+        ? corner.row
+        : corner.row + rows;
+    const col =
+      corner.col === null || corner.colAbsolute
+        ? corner.col
+        : corner.col + cols;
+    const inside =
+      (row === null || (row >= 0 && row < SHEET_ROWS)) &&
+      (col === null || (col >= 0 && col < SHEET_COLUMNS));
+    return inside ? { ...corner, row, col } : null;
+  };
+  return (node: RangeNode): Ast => {
+    const start = move(node.start);
+    const end = node.end && move(node.end);
+    if (!start || end === null) return { type: 'error', value: error('#REF!') };
+    return { ...node, start, ...(end && { end }) };
+  };
+}
+
+/**
+ * Whether Gridworks can calculate a formula: whether every function it
+ * calls is in the library and it uses no other name.
+ */
+export function calculable(ast: Ast): boolean {
+  switch (ast.type) {
+    case 'name':
+      return false;
+    case 'call':
+      return ast.name in LIBRARY && ast.args.every(calculable);
+    case 'unary':
+    case 'percent':
+      return calculable(ast.operand);
+    case 'paren':
+      return calculable(ast.inner);
+    case 'binary':
+      return calculable(ast.left) && calculable(ast.right);
+    default:
+      return true;
+  }
 }
 
 /** The areas a formula reads, with the sheet named for each, in order. */

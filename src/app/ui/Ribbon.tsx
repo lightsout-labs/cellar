@@ -1,5 +1,14 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { Moon, Redo2, Sun, Table2, Undo2, type LucideIcon } from 'lucide-react';
+import {
+  Download,
+  FolderOpen,
+  Moon,
+  Redo2,
+  Sun,
+  Table2,
+  Undo2,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   useCallback,
   useId,
@@ -28,6 +37,9 @@ export function Ribbon({
   onLanguage,
   theme,
   onTheme,
+  busy,
+  onOpen,
+  onSave,
 }: {
   workbook: Workbook;
   view: View;
@@ -35,6 +47,10 @@ export function Ribbon({
   onLanguage: (language: Language) => void;
   theme: Theme;
   onTheme: (theme: Theme) => void;
+  /** Whether a file is being opened or saved, when neither can start. */
+  busy: boolean;
+  onOpen: () => void;
+  onSave: () => void;
 }) {
   const t = useTranslation();
   return (
@@ -45,6 +61,11 @@ export function Ribbon({
           Gridworks
         </span>
         <Tabs.List aria-label={t('ribbon')}>
+          <Tooltip text={t('tab.file.tooltip')}>
+            <Tabs.Trigger className={styles.ribbonTab} value="file">
+              {t('tab.file')}
+            </Tabs.Trigger>
+          </Tooltip>
           <Tooltip text={t('tab.home.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="home">
               {t('tab.home')}
@@ -57,6 +78,26 @@ export function Ribbon({
           </Tooltip>
         </Tabs.List>
       </div>
+      <Tabs.Content className={styles.ribbonPanel} value="file">
+        <Group label={t('file.group')}>
+          <Command
+            icon={FolderOpen}
+            label={t('file.open')}
+            tooltip={t('file.open.tooltip')}
+            disabled={busy}
+            onRun={onOpen}
+            labeled
+          />
+          <Command
+            icon={Download}
+            label={t('file.save')}
+            tooltip={t('file.save.tooltip')}
+            disabled={busy}
+            onRun={onSave}
+            labeled
+          />
+        </Group>
+      </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="home">
         <Group label={t('undo')}>
           <History workbook={workbook} view={view} />
@@ -141,30 +182,33 @@ function History({ workbook, view }: { workbook: Workbook; view: View }) {
   );
 }
 
-/** A button that runs a command, shown by its icon alone. */
+/** A button that runs a command, shown by its icon, and its label if `labeled`. */
 function Command({
   icon: Icon,
   label,
   tooltip,
   disabled,
   onRun,
+  labeled = false,
 }: {
   icon: LucideIcon;
   label: string;
   tooltip: string;
   disabled: boolean;
   onRun: () => void;
+  labeled?: boolean;
 }) {
   return (
     <Tooltip text={tooltip}>
       <button
         type="button"
         className={styles.button}
-        aria-label={label}
+        aria-label={labeled ? undefined : label}
         disabled={disabled}
         onClick={onRun}
       >
         <Icon size={ICON_SIZE} aria-hidden />
+        {labeled && label}
       </button>
     </Tooltip>
   );

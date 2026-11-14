@@ -2,6 +2,33 @@ export type Language = 'en' | 'zh';
 
 const en = {
   ribbon: 'Ribbon',
+  'tab.file': 'File',
+  'tab.file.tooltip': 'Open and save workbooks',
+  'file.group': 'Excel workbook',
+  'file.open': 'Open',
+  'file.open.tooltip': 'Open an Excel workbook (.xlsx) from your computer',
+  'file.save': 'Save',
+  'file.save.tooltip':
+    'Save the workbook to your computer as an Excel workbook (.xlsx)',
+  'file.invalid':
+    '"{name}" could not be opened because it is not a valid Excel workbook (.xlsx).',
+  'file.saveFailed': 'The workbook could not be saved. Please try again.',
+  'file.dropped':
+    'Some content of "{name}" is not supported and was not opened: {list}.',
+  'dropped.chart.one': '1 chart',
+  'dropped.chart.other': '{count} charts',
+  'dropped.pivotTable.one': '1 pivot table',
+  'dropped.pivotTable.other': '{count} pivot tables',
+  'dropped.picture.one': '1 picture',
+  'dropped.picture.other': '{count} pictures',
+  'dropped.formula.one':
+    '1 formula that Gridworks cannot calculate (its last result was kept as a value)',
+  'dropped.formula.other':
+    '{count} formulas that Gridworks cannot calculate (their last results were kept as values)',
+  'dropped.cell.one': '1 cell beyond row 100,000 or column CV',
+  'dropped.cell.other': '{count} cells beyond row 100,000 or column CV',
+  'message.close': 'Close',
+  'message.close.tooltip': 'Close this message',
   'tab.home': 'Home',
   'tab.home.tooltip': 'The most used commands',
   undo: 'Undo',
@@ -67,6 +94,30 @@ export type Key = keyof typeof en;
 
 const zh: Record<Key, string> = {
   ribbon: '功能区',
+  'tab.file': '文件',
+  'tab.file.tooltip': '打开和保存工作簿',
+  'file.group': 'Excel 工作簿',
+  'file.open': '打开',
+  'file.open.tooltip': '从计算机中打开 Excel 工作簿 (.xlsx)',
+  'file.save': '保存',
+  'file.save.tooltip': '将工作簿以 Excel 工作簿 (.xlsx) 格式保存到计算机',
+  'file.invalid': '无法打开“{name}”，因为它不是有效的 Excel 工作簿 (.xlsx)。',
+  'file.saveFailed': '无法保存工作簿，请重试。',
+  'file.dropped': '“{name}”中有部分内容不受支持，未能打开：{list}。',
+  'dropped.chart.one': '{count} 个图表',
+  'dropped.chart.other': '{count} 个图表',
+  'dropped.pivotTable.one': '{count} 个数据透视表',
+  'dropped.pivotTable.other': '{count} 个数据透视表',
+  'dropped.picture.one': '{count} 张图片',
+  'dropped.picture.other': '{count} 张图片',
+  'dropped.formula.one':
+    '{count} 个 Gridworks 无法计算的公式（已将其最后结果保留为值）',
+  'dropped.formula.other':
+    '{count} 个 Gridworks 无法计算的公式（已将其最后结果保留为值）',
+  'dropped.cell.one': '{count} 个超出第 100,000 行或 CV 列的单元格',
+  'dropped.cell.other': '{count} 个超出第 100,000 行或 CV 列的单元格',
+  'message.close': '关闭',
+  'message.close.tooltip': '关闭此消息',
   'tab.home': '开始',
   'tab.home.tooltip': '最常用的命令',
   undo: '撤消',
