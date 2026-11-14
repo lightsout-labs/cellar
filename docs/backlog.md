@@ -412,6 +412,30 @@ Acceptance criteria:
 - A function called with the wrong number or type of arguments gives the error
   Excel gives. (R13)
 
+Notes:
+- The library is one table of `Spec`s per family (`math.ts`,
+  `statistics.ts`, `logic.ts`, `conditional.ts`), merged in `library.ts`.
+  A spec gives `min`/`max` arguments, `pairs`, `range` (arguments that
+  must be references, refused as constants at parse time) and `prefixed`
+  (written as `_xlfn.` in files; `parse` strips the prefix, and
+  `print(ast, { file: true })` adds it). S10 adds its families the same
+  way and marks its newer functions `prefixed`.
+- Implementations get lazy `Args` (`value`, `number`, `reference`,
+  `numbers`, `cells`, `cell`). `Context.cells` now visits non-empty cells
+  with their row and column, in no set order; `numbers({ ordered })` sorts
+  row by row when order matters (`MODE`). Lookups in S10 can read cells in
+  order with `cell`, or by visiting and sorting.
+- A number result that is not finite becomes `#NUM!` in one place
+  (`evaluate.ts`), so implementations may return `NaN` or `Infinity`.
+- 101 functions now. Not built: `RAND` and `RANDBETWEEN` (the dependency
+  graph has no volatile functions), `SUBTOTAL` and `AGGREGATE` (they must
+  skip nested subtotals and hidden rows), and array constants such as
+  `{1,2,3}`.
+- Criteria: a number, or text that reads as one, matches numbers and text
+  that reads as the same number for `=` and `<>` only; an empty criteria
+  cell is taken as 0; an error criterion matches that error. Wildcards use
+  our own matcher, not a RegExp, so no criterion can backtrack for long.
+
 ## S10: Functions: text, dates, lookup and information
 
 Status: Todo

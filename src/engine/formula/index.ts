@@ -278,6 +278,9 @@ class Parser {
     const { length } = args;
     if (length < spec.min || length > spec.max) return null;
     if (spec.pairs && (length - spec.min) % 2 !== 0) return null;
+    if (args.some((arg, index) => spec.range?.(index) && !referable(arg))) {
+      return null;
+    }
     return { type: 'call', name: upper, args };
   }
 
@@ -380,6 +383,14 @@ class Parser {
     if (match) this.at += match[0].length;
     return match;
   }
+}
+
+/** Whether an argument can give a reference: not a constant or an operation. */
+function referable(ast: Ast): boolean {
+  if (ast.type === 'paren') return referable(ast.inner);
+  return (
+    ['range', 'call', 'name', 'error'].includes(ast.type) || isReference(ast)
+  );
 }
 
 function isReference(ast: Ast): boolean {

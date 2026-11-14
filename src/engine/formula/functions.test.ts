@@ -42,7 +42,7 @@ describe('math and trigonometry functions', () => {
       ['EXP(1)', 2.71828183],
       ['EXP(2)', 7.3890561],
       ['LN(86)', 4.4543473],
-      ['LN(2.7182818)', 1],
+      ['LN(2.7182818)', 0.99999999],
       ['LN(EXP(3))', 3],
       ['LOG(10)', 1],
       ['LOG(8,2)', 3],
@@ -487,6 +487,9 @@ describe('criteria of the conditional totals', () => {
     ['COUNTIF(A1:A10,"<>")', 9],
     ['COUNTIF(A1:A10,"<>5")', 8],
     ['COUNTIF(A1:A12,"<>Apple")', 11],
+    ['COUNTIF(A1:A10,"*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b")', 0],
+    ['COUNTIF(A1:A10,"?pple*")', 2],
+    ['COUNTIF(A1:A10,"*")', 5],
     ['COUNTIF(B:B,"")', 100000],
     ['SUMIF(A1:A8,"<>5",A1:A8)', 10],
   ]);
@@ -559,7 +562,6 @@ describe('function errors', () => {
     ['SUMIFS(A1:A3,B1:B2,">0")', '#VALUE!'],
     ['COUNTIFS(A1:A3,">0",B1:B2,">0")', '#VALUE!'],
     ['CORREL(A1:A3,B1:B2)', '#N/A'],
-    ['SUMIF(1,">0")', '#VALUE!'],
     // Numbers outside the domain of a function.
     ['SQRT(-16)', '#NUM!'],
     ['LN(0)', '#NUM!'],
@@ -577,6 +579,8 @@ describe('function errors', () => {
     ['LARGE(A1:A3,4)', '#NUM!'],
     ['SMALL(A1:A3,0)', '#NUM!'],
     ['MEDIAN(C1:C3)', '#NUM!'],
+    ['COUNT(Nowhere!A1:A3)', '#REF!'],
+    ['COUNTA(Nowhere!A1:A3)', '#REF!'],
     ['PERCENTILE(A1:A3,1.5)', '#NUM!'],
     ['QUARTILE(A1:A3,5)', '#NUM!'],
     ['GEOMEAN(0,1)', '#NUM!'],
@@ -624,6 +628,18 @@ describe('function errors', () => {
     'COUNTIFS(A1:A2,1,B1:B2)',
     'NOT()',
   ])('refuses %s, with the wrong number of arguments', (formula) => {
+    expect(parse(formula)).toBeNull();
+  });
+
+  it.each([
+    'SUMIF(1,">0")',
+    'SUMIF(A1:A2,">0",2)',
+    'SUMIFS(A1:A2,"x",1)',
+    'COUNTIF(A1+1,1)',
+    'COUNTIFS(A1:A2,1,TRUE,1)',
+    'COUNTBLANK("a")',
+    'RANK(1,2)',
+  ])('refuses %s, with a constant where a range is needed', (formula) => {
     expect(parse(formula)).toBeNull();
   });
 });

@@ -94,7 +94,8 @@ export function column(
 
 /**
  * Checks a result against Excel's: to 9 decimals, or, when Excel's
- * documentation shows a number rounded, to as many decimals as it shows.
+ * documentation shows numbers rounded, a fraction to as many decimals as
+ * it shows.
  */
 export function expectExcel(
   actual: Value,
@@ -103,7 +104,8 @@ export function expectExcel(
 ): void {
   if (typeof expected === 'number') {
     const shown = String(expected).split('.')[1]?.length ?? 0;
-    expect(actual).toBeCloseTo(expected, rounded ? shown : 9);
+    const exact = !rounded || Number.isInteger(expected);
+    expect(actual).toBeCloseTo(expected, exact ? 9 : shown);
   } else {
     expect(actual).toEqual(expected);
   }

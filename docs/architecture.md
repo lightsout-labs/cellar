@@ -135,7 +135,8 @@ Decisions that are cheap to reverse, with their reasons:
   family (math, statistics, logic, conditional totals), each giving its
   number of arguments, whether files prefix its name with `_xlfn.`, and
   its implementation. The parser refuses a call with the wrong number of
-  arguments, as Excel does, so it stays text. An implementation receives
+  arguments, or with a constant where it needs a range (as the first
+  argument of `SUMIF`), as Excel does, so it stays text. An implementation receives
   its arguments unevaluated and asks for each as a value, a number or a
   reference, so that `IF`, `IFS` and `IFERROR` evaluate only what they
   need. A formula reads a range by visiting its cells that are not

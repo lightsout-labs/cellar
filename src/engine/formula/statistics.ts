@@ -112,6 +112,7 @@ function rank(average: boolean, prefixed: boolean): Spec {
   return {
     min: 2,
     max: 3,
+    range: (index) => index === 1,
     prefixed,
     call(args) {
       const n = args.number(0);
@@ -135,12 +136,13 @@ function rank(average: boolean, prefixed: boolean): Spec {
 }
 
 /** Counts the cells of references that hold anything, and typed values. */
-function countAll(args: Args): number {
+function countAll(args: Args): number | ErrorValue {
   let count = 0;
   for (let index = 0; index < args.length; index++) {
     const result = args.result(index);
     if (result instanceof Reference) {
-      args.cells(result, () => count++);
+      const missing = args.cells(result, () => count++);
+      if (missing) return missing;
     } else {
       count++;
     }
@@ -193,9 +195,10 @@ export const STATISTICS: Record<string, Spec> = {
       for (let index = 0; index < args.length; index++) {
         const result = args.result(index);
         if (result instanceof Reference) {
-          args.cells(result, (value) => {
+          const missing = args.cells(result, (value) => {
             if (typeof value === 'number') count++;
           });
+          if (missing) return missing;
         } else if (!isError(result) && !isError(toNumber(result))) {
           count++;
         }
@@ -207,6 +210,7 @@ export const STATISTICS: Record<string, Spec> = {
   COUNTBLANK: {
     min: 1,
     max: 1,
+    range: () => true,
     call(args) {
       const reference = args.reference(0);
       if (isError(reference)) return reference;

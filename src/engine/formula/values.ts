@@ -85,6 +85,11 @@ export interface Spec {
   readonly max: number;
   /** Whether the arguments after the first `min` come in pairs. */
   readonly pairs?: boolean;
+  /**
+   * Whether an argument must be a reference, as the ranges of `SUMIF`; a
+   * formula that gives a constant there is refused, as Excel refuses it.
+   */
+  readonly range?: (index: number) => boolean;
   /** Whether files write it with `_xlfn.`, as a function newer than 2007. */
   readonly prefixed?: boolean;
   call(args: Args): Result;

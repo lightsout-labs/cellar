@@ -44,9 +44,9 @@ function criterion(value: Value): Test {
     );
   }
   if (operator === '' || operator === '=' || operator === '<>') {
-    const pattern = wildcards(operand);
+    const matches = wildcards(operand);
     return comparing(operator, (cell) =>
-      typeof cell === 'string' && pattern.test(cell) ? 0 : 1,
+      typeof cell === 'string' && matches(cell) ? 0 : 1,
     );
   }
   return comparing(operator, (cell) =>
@@ -95,24 +95,46 @@ function equalsNumber(number: number, operator: string): Test {
   });
 }
 
-function wildcards(text: string): RegExp {
-  let source = '';
+/**
+ * A test of text against a pattern with Excel's wildcards, without regard
+ * to case. It never backtracks further than the last `*`, so that no
+ * pattern takes more than the product of the two lengths.
+ */
+function wildcards(text: string): (cell: string) => boolean {
+  const kinds: ('*' | '?' | 'char')[] = [];
+  const chars: string[] = [];
   for (let index = 0; index < text.length; index++) {
-    const char = text[index]!;
+    let char = text[index]!;
     if (char === '~' && index + 1 < text.length) {
-      source += escape(text[++index]!);
-    } else if (char === '*') {
-      source += '.*';
-    } else if (char === '?') {
-      source += '.';
+      char = text[++index]!;
+      kinds.push('char');
     } else {
-      source += escape(char);
+      kinds.push(char === '*' || char === '?' ? char : 'char');
     }
+    chars.push(char.toLowerCase());
   }
-  return new RegExp(`^${source}$`, 'is');
+  return (cell) => {
+    const subject = cell.toLowerCase();
+    let [at, from, star, resume] = [0, 0, -1, 0];
+    while (from < subject.length) {
+      const kind = kinds[at];
+      if (kind === '?' || (kind === 'char' && chars[at] === subject[from])) {
+        at++;
+        from++;
+      } else if (kind === '*') {
+        star = at++;
+        resume = from;
+      } else if (star >= 0) {
+        at = star + 1;
+        from = ++resume;
+      } else {
+        return false;
+      }
+    }
+    while (kinds[at] === '*') at++;
+    return at === kinds.length;
+  };
 }
-
-const escape = (char: string) => char.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
 
 interface Criterion {
   readonly reference: Reference;
@@ -228,6 +250,7 @@ function single(combine: Combine): Spec {
   return {
     min: 2,
     max: 3,
+    range: (index) => index !== 1,
     call(args) {
       const all = criteria(args, 0, 2);
       if (isError(all)) return all;
@@ -256,6 +279,7 @@ function multiple(combine: Combine, prefixed: boolean): Spec {
     min: 3,
     max: 255,
     pairs: true,
+    range: (index) => index === 0 || index % 2 === 1,
     prefixed,
     call(args) {
       const target = args.reference(0);
@@ -275,6 +299,7 @@ export const CONDITIONAL: Record<string, Spec> = {
   COUNTIF: {
     min: 2,
     max: 2,
+    range: (index) => index === 0,
     call(args) {
       const all = criteria(args, 0);
       return isError(all) ? all : count(args, all);
@@ -284,6 +309,7 @@ export const CONDITIONAL: Record<string, Spec> = {
     min: 2,
     max: 254,
     pairs: true,
+    range: (index) => index % 2 === 0,
     call(args) {
       const all = criteria(args, 0);
       return isError(all) ? all : count(args, all);
