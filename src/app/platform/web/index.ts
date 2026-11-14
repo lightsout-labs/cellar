@@ -106,6 +106,7 @@ async function load(id: string): Promise<Stored | null> {
             return {
               id: record.id,
               name: record.name,
+              ...(record.color !== undefined && { color: record.color }),
               columns: record.columns,
               formulas: record.formulas,
               styleIds: record.styleIds,
@@ -142,6 +143,9 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
     styles: snapshot.styles,
   };
   transaction.objectStore(WORKBOOKS).put(workbook);
+  // Deleted sheets go too: every sheet of the workbook is written again.
+  // Arrays sort after strings, so `[id, []]` follows every sheet key.
+  transaction.objectStore(SHEETS).delete(IDBKeyRange.bound([id], [id, []]));
   for (const sheet of snapshot.sheets) {
     transaction
       .objectStore(SHEETS)

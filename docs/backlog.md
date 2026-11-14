@@ -264,7 +264,7 @@ Notes:
 
 ## S06: Multiple sheets
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can add, rename, delete and duplicate sheets from the sheet tabs.

@@ -83,13 +83,22 @@ Decisions that are cheap to reverse, with their reasons:
 - **Every edit is a command.** Before it runs a command, the workbook
   records the contents and styles of the cells the command will change as
   a `restore` command, which puts them back, so undo covers every change by
-  construction (R5) rather than feature by feature. Undo runs that
+  construction (R5) rather than feature by feature. A change to the sheets
+  (add or duplicate, delete, rename, recolor, move) records its own
+  reverse: deleting a sheet records a `restoreSheet` command holding a
+  snapshot of it, and the others their opposite. Undo runs that
   command and records its own reverse for redo; the listeners receive it
   like any other, so storage records an undo as a change. The workbook
   keeps the last 100 changes, Excel's number, and a new change forgets
   what could be redone. A workbook opened with its recorded changes
   replayed (`fromSnapshot(snapshot, changes)`) starts with nothing to
   undo, as the history is not stored.
+- **The view follows the sheets.** `View` subscribes to the workbook when
+  it is made, right after the workbook and before anything else, so that
+  when the sheet it shows is deleted, by a command or an undo, it shows the
+  sheet that took its place before any other listener reads the deleted
+  one. Switching to another sheet selects A1 there; each sheet's selection
+  is not remembered.
 - **Window shortcuts are handled on the window**, not by the grid, so that
   Ctrl/Cmd+Z and Ctrl/Cmd+Y work after a click on the ribbon too. During an
   entry they are left to the editor, which undoes its own typing.
@@ -146,16 +155,19 @@ Decisions that are cheap to reverse, with their reasons:
 
 A workbook **snapshot** is a versioned, JSON-compatible object: workbook
 properties (name, sheet order, named ranges, the table of distinct styles)
-and, for each sheet, its columns of values, style identifiers, formulas, row
-heights and column widths, merges, frozen panes, filters, validation rules,
-conditional formats, notes and hyperlinks. It is the only form in which a
+and, for each sheet, its name and tab color, its columns of values, style
+identifiers, formulas, row heights and column widths, merges, frozen
+panes, filters, validation rules, conditional formats, notes and
+hyperlinks. It is the only form in which a
 workbook leaves the engine.
 
 - **Browser storage**: an IndexedDB database named `cellar` with three
   object stores. `workbooks` holds one record for each workbook
   (identifier, name, modification time, workbook properties). `sheets`
   holds one record for each sheet, keyed by workbook and sheet identifier,
-  so that autosave rewrites only the sheets that changed. `changes` holds
+  so that autosave can rewrite only the sheets that changed; for now it
+  rewrites them all, after deleting those of the workbook, so that a
+  deleted sheet leaves no record. `changes` holds
   each command executed since the workbook was last saved, keyed by
   workbook and sequence number. Each command is recorded the moment it is
   executed; the whole workbook is saved half a second after the last change

@@ -26,7 +26,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
     page.getByRole('tabpanel', { name: 'Home' }),
     formulaBar(page),
     page.locator('canvas'),
-    page.getByRole('list', { name: 'Sheets' }),
+    page.getByRole('tablist', { name: 'Sheets' }),
     page.getByRole('contentinfo'),
   ];
   let bottom = 0;
@@ -48,7 +48,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
   expect(formula.y).toBeLessThan(name.y + name.height);
 
   await expect(
-    page.getByRole('list', { name: 'Sheets' }).getByRole('listitem'),
+    page.getByRole('tablist', { name: 'Sheets' }).getByRole('tab'),
   ).toHaveText(['Sheet1']);
   await expect(page.getByRole('contentinfo')).toContainText('Ready');
 });
@@ -115,7 +115,8 @@ test.describe('in a browser set to Chinese', () => {
       page.getByRole('group', { name: '语言' }),
       page.getByLabel('名称框'),
       page.getByLabel('编辑栏'),
-      page.getByRole('list', { name: '工作表' }),
+      page.getByRole('tablist', { name: '工作表' }),
+      page.getByRole('button', { name: '新建工作表' }),
       page.getByRole('contentinfo').getByText('就绪'),
       page.getByRole('button', { name: '放大' }),
       page.getByRole('button', { name: '缩小' }),
@@ -124,6 +125,22 @@ test.describe('in a browser set to Chinese', () => {
     for (const each of chinese) await expect(each).toBeVisible();
     await page.getByRole('button', { name: '深色' }).hover();
     await expect(page.getByRole('tooltip')).toHaveText('使用深色主题');
+    // So is the menu of a sheet tab.
+    await page
+      .getByRole('tab', { name: 'Sheet1', exact: true })
+      .click({ button: 'right' });
+    for (const item of [
+      '插入',
+      '创建副本',
+      '重命名',
+      '删除',
+      '工作表标签颜色',
+    ]) {
+      await expect(
+        page.getByRole('menuitem', { name: item, exact: true }),
+      ).toBeVisible();
+    }
+    await page.keyboard.press('Escape');
     // The summary of a selection is in Chinese too.
     await page.locator('canvas').click({ position: { x: 4, y: 4 } });
     await page.locator('canvas').click({ position: { x: 100, y: 36 } });
@@ -145,7 +162,8 @@ test.describe('in a browser set to Chinese', () => {
       page.getByRole('group', { name: 'Language' }),
       nameBox(page),
       formulaBar(page),
-      page.getByRole('list', { name: 'Sheets' }),
+      page.getByRole('tablist', { name: 'Sheets' }),
+      page.getByRole('button', { name: 'New sheet' }),
       page.getByRole('contentinfo').getByText('Ready'),
       page.getByRole('button', { name: 'Zoom in' }),
       page.getByRole('button', { name: 'Zoom out' }),
@@ -248,7 +266,10 @@ test.describe('the controls', () => {
       // No control of the tab is left out of the list.
       await expect(page.getByRole('button')).toHaveCount(buttons);
     };
+    // The sheet tabs and the status bar are always there.
     const statusBar = [
+      ['tab', 'Sheet1', 'Double-click to rename, right-click for more actions'],
+      ['button', 'New sheet', 'Insert a new sheet'],
       ['button', 'Zoom out', 'Zoom out by 10%'],
       ['button', 'Zoom in', 'Zoom in by 10%'],
       ['slider', 'Zoom', 'Size of the grid'],
@@ -262,7 +283,7 @@ test.describe('the controls', () => {
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
         ...statusBar,
       ],
-      4,
+      5,
     );
     await page.getByRole('tab', { name: 'View' }).click();
     await clickCell(page, 5, 5); // Away from the tab and its tooltip.
@@ -274,7 +295,7 @@ test.describe('the controls', () => {
         ['button', '中文', 'Show the interface in Simplified Chinese'],
         ...statusBar,
       ],
-      6,
+      7,
     );
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(1);
