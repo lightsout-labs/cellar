@@ -1,6 +1,6 @@
 import { SHEET_COLUMNS, SHEET_ROWS, type Range } from '../../engine/workbook';
 import type { CellPosition } from './geometry';
-import { single, withLast, type Selection } from './selection';
+import { extendTo, single, type Selection } from './selection';
 
 const LAST_ROW = SHEET_ROWS - 1;
 const LAST_COL = SHEET_COLUMNS - 1;
@@ -105,9 +105,7 @@ export function navigate(
   const { extend } = navigation;
   const from = extend ? selection.focus : selection.active;
   const to = clamp(target(from, navigation, sheet));
-  if (!extend) return single(to);
-  const { active, anchor } = selection;
-  return withLast(selection, { active, anchor, focus: to });
+  return extend ? extendTo(selection, to) : single(to);
 }
 
 function target(

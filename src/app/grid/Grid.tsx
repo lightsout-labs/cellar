@@ -13,6 +13,7 @@ import {
   type Workbook,
 } from '../../engine/workbook';
 import {
+  cellAt,
   cellRect,
   COLUMN_HEADER_HEIGHT,
   COLUMN_WIDTH,
@@ -116,17 +117,19 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     const onMove = (event: globalThis.MouseEvent) => {
       if (!drag.current || drag.current === 'all') return;
       const bounds = canvas.current!.getBoundingClientRect();
-      const { zoom } = view.state;
-      let x = event.clientX - bounds.left;
-      let y = event.clientY - bounds.top;
-      // Over a header, a cell drag takes the cell beside it; a row drag
-      // stays in the row header and a column drag in the column header.
-      x = drag.current === 'row' ? 0 : Math.max(x, ROW_HEADER_WIDTH * zoom);
-      y =
-        drag.current === 'column'
-          ? 0
-          : Math.max(y, COLUMN_HEADER_HEIGHT * zoom);
-      const target = hitTest(x, y, viewport());
+      // Past the headers or the edges, the drag reaches the cells beyond
+      // them, and the grid scrolls to show them.
+      const { row, col } = cellAt(
+        event.clientX - bounds.left,
+        event.clientY - bounds.top,
+        viewport(),
+      );
+      const target: Target =
+        drag.current === 'row'
+          ? { kind: 'row', row }
+          : drag.current === 'column'
+            ? { kind: 'column', col }
+            : { kind: 'cell', row, col };
       const next = pick(view.state.selection, target, 'extend', topLeft());
       if (
         next.focus.row === view.state.selection.focus.row &&

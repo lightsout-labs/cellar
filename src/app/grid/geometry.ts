@@ -68,12 +68,20 @@ export function hitTest(x: number, y: number, viewport: Viewport): Target {
   const { zoom } = viewport;
   const inRowHeader = x < ROW_HEADER_WIDTH * zoom;
   const inColumnHeader = y < COLUMN_HEADER_HEIGHT * zoom;
-  const row = rowAt(y, viewport);
-  const col = colAt(x, viewport);
+  const { row, col } = cellAt(x, y, viewport);
   if (inRowHeader && inColumnHeader) return { kind: 'all' };
   if (inRowHeader) return { kind: 'row', row };
   if (inColumnHeader) return { kind: 'column', col };
   return { kind: 'cell', row, col };
+}
+
+/**
+ * The cell at a point as if the headers were not drawn over the cells: over
+ * a header, the cell scrolled behind it. A drag past the headers or the
+ * edges of the canvas reaches the cells beyond them this way.
+ */
+export function cellAt(x: number, y: number, viewport: Viewport): CellPosition {
+  return { row: rowAt(y, viewport), col: colAt(x, viewport) };
 }
 
 function rowAt(y: number, { scrollY, zoom }: Viewport): number {

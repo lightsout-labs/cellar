@@ -166,6 +166,7 @@ for (const system of ['light', 'dark'] as const) {
         const ribbon = page.getByRole('tabpanel', { name: 'View' });
         const status = page.getByRole('contentinfo');
         const button = page.getByRole('button', { name: 'English' });
+        const zoomIn = page.getByRole('button', { name: 'Zoom in' });
         await expect
           .poll(async () => {
             const [red, green, blue] = await cellBackground(page, 3, 3);
@@ -176,12 +177,18 @@ for (const system of ['light', 'dark'] as const) {
               await isDark(formulaBar(page), 'background-color'),
               !(await isDark(ribbon, 'color')),
               !(await isDark(button, 'color')),
+              !(await isDark(zoomIn, 'color')),
+              // A selected cell is shaded in the theme's own color.
+              (await cellBackground(page, 0, 1)).reduce((a, b) => a + b) / 3 <
+                128,
             ];
           })
-          .toEqual(Array(6).fill(dark));
+          .toEqual(Array(8).fill(dark));
       };
 
       await openApp(page);
+      // A1 and B1 selected; A1, the active cell, is not shaded.
+      await page.keyboard.press('Shift+ArrowRight');
       await expectTheme(system === 'dark');
       await expect(page.getByRole('button', { name: other })).toHaveAttribute(
         'aria-pressed',
@@ -247,7 +254,8 @@ test.describe('the controls', () => {
     );
 
     await page.mouse.move(500, 400); // Over the grid, away from the controls.
-    for (const control of [tab, button]) {
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' });
+    for (const control of [tab, button, zoomOut]) {
       expect(parseFloat(await style(control, 'border-radius'))).toBeGreaterThan(
         0,
       );
@@ -281,14 +289,26 @@ test.describe('the controls', () => {
     await expect(tab).toBeFocused();
     expect(await style(tab, 'outline-style')).toBe('solid');
 
-    // No control is disabled yet, so one is disabled here to see the state:
-    // faded, with the plain cursor, and unchanged under the pointer.
+    // The controls of the status bar, after the grid in the tab order.
+    await page.locator('canvas').click({ position: { x: 300, y: 200 } });
+    const slider = page.getByRole('slider', { name: 'Zoom' });
+    const zoomIn = page.getByRole('button', { name: 'Zoom in' });
+    for (const control of [zoomOut, slider, zoomIn]) {
+      await page.keyboard.press(key);
+      await expect(control).toBeFocused();
+      expect(await style(control, 'outline-style')).toBe('solid');
+      expect(await style(control, 'outline-color')).toBe(accent);
+    }
+
+    // At 50%, Zoom out is disabled: faded, with the plain cursor, and
+    // unchanged under the pointer.
+    await slider.fill('50');
+    await expect(zoomOut).toBeDisabled();
     await page.mouse.move(500, 400);
-    await button.evaluate((node: HTMLButtonElement) => (node.disabled = true));
-    await expect.poll(() => style(button, 'opacity')).toBe('0.5');
-    expect(await style(button, 'cursor')).toBe('default');
-    await button.hover({ force: true });
+    await expect.poll(() => style(zoomOut, 'opacity')).toBe('0.5');
+    expect(await style(zoomOut, 'cursor')).toBe('default');
+    await zoomOut.hover({ force: true });
     await page.waitForTimeout(300); // Longer than the transition.
-    expect(await style(button, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+    expect(await style(zoomOut, 'background-color')).toBe('rgba(0, 0, 0, 0)');
   });
 });

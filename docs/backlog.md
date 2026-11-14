@@ -118,6 +118,37 @@ Acceptance criteria:
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
 
+Notes:
+- A sheet is 100,000 rows by 100 columns (`SHEET_ROWS`, `SHEET_COLUMNS` in
+  `engine/workbook`). The grid scrolls natively over a sheet-sized element,
+  which browsers cap at 17 to 33 million pixels; more rows need scroll bars
+  of our own (see the architecture document).
+- `View` holds the selection (`src/app/grid/selection.ts`: ranges, active
+  cell, anchor and focus), the zoom and End mode. The scroll position is the
+  scrolling element's. Keyboard moves go through `navigationFor` and
+  `View.navigate`; S15 (row and column sizes) must replace the uniform sizes
+  in `geometry.ts`, and S19 (freeze panes) its scroll offsets.
+- During an entry, arrows still move the caret in the editor. Excel's Enter
+  mode, where an arrow commits and moves, belongs to S04.
+- Navigation tests emptiness with `workbook.cell(...).value`, which also
+  formats the display text. Ctrl+arrow down a full column of 100,000 cells
+  stays well under a second, so no engine query was added for it.
+- The status bar summary counts a cell in two ranges twice, as `SUM` does,
+  and shows nothing for one cell or for empty cells.
+- The performance test stores its sheet directly in IndexedDB, copying the
+  record shapes of `src/app/platform/web`, with `no-restricted-globals`
+  turned off for that one line: no file format can be opened yet. If the
+  schema changes, change the test with it, or seed through file opening
+  once S08 exists. Each frame draws in about 1.5 ms locally; the budget is
+  16 ms.
+- Failed fix: measuring 300 draws in one synchronous loop. Chromium flushes
+  the canvas now and then, and a few draws took 20 ms; the test takes one
+  step per animation frame, as scrolling does.
+- Failed fix: `locator.click` on the canvas after scrolling. Playwright first
+  scrolls the sticky canvas "into view" and resets the scroll position; the
+  tests click with `page.mouse` at the canvas's coordinates. On WebKit, a
+  click near the edge lands on the overlay scroll bars.
+
 ## S04: Editing cells and recognizing what is typed
 
 Status: Todo

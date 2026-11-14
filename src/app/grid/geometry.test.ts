@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SHEET_COLUMNS, SHEET_ROWS } from '../../engine/workbook';
 import {
+  cellAt,
   cellRect,
   COLUMN_HEADER_HEIGHT,
   COLUMN_WIDTH,
@@ -73,6 +74,21 @@ describe('grid geometry', () => {
       col: 2,
     });
     expect(hitTest(1, 1, top)).toEqual({ kind: 'all' });
+  });
+
+  it('finds the cell scrolled behind a header, for a drag past it', () => {
+    const scrolled = {
+      scrollX: 3 * COLUMN_WIDTH,
+      scrollY: 3 * ROW_HEIGHT,
+      zoom: 1,
+    };
+    expect(
+      cellAt(ROW_HEADER_WIDTH - 1, COLUMN_HEADER_HEIGHT - 1, scrolled),
+    ).toEqual({
+      row: 2,
+      col: 2,
+    });
+    expect(cellAt(-1000, -1000, scrolled)).toEqual({ row: 0, col: 0 });
   });
 
   it('finds the nearest cell for a point beyond the sheet', () => {

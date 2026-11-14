@@ -17,7 +17,7 @@ export interface Selection {
 }
 
 /** The range between two corners. */
-export function span(a: CellPosition, b: CellPosition): Range {
+function span(a: CellPosition, b: CellPosition): Range {
   return {
     top: Math.min(a.row, b.row),
     left: Math.min(a.col, b.col),
@@ -37,10 +37,19 @@ export function single(cell: CellPosition): Selection {
 }
 
 /**
+ * The selection with its last range stretched from its anchor to a new
+ * focus, the active cell unchanged: Shift with a key or a click.
+ */
+export function extendTo(selection: Selection, focus: CellPosition): Selection {
+  const { active, anchor } = selection;
+  return withLast(selection, { active, anchor, focus });
+}
+
+/**
  * A selection whose last range is replaced by the one from `anchor` to
  * `focus`, or added after the others.
  */
-export function withLast(
+function withLast(
   selection: Selection,
   last: Pick<Selection, 'active' | 'anchor' | 'focus'>,
   add = false,
@@ -65,11 +74,7 @@ export function pick(
     const { anchor, active } = selection;
     switch (target.kind) {
       case 'cell':
-        return withLast(selection, {
-          active,
-          anchor,
-          focus: { row: target.row, col: target.col },
-        });
+        return extendTo(selection, { row: target.row, col: target.col });
       case 'row':
         return withLast(selection, {
           active,

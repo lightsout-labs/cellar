@@ -140,10 +140,18 @@ test('the keyboard moves and extends the selection as in Excel', async ({
   // A page at a time.
   await page.keyboard.press('ArrowDown');
   await expect(nameBox(page)).toHaveText('A3');
+  // A page is the rows wholly shown, and the grid turns by as many, so the
+  // active cell keeps its place on screen.
+  const grid = canvas(page).locator('xpath=../..');
+  const rows = await grid.evaluate((node) =>
+    Math.floor((node.clientHeight - 24) / 24),
+  );
   await page.keyboard.press('PageDown');
-  await expect(nameBox(page)).not.toHaveText('A3');
+  await expect(nameBox(page)).toHaveText(`A${3 + rows}`);
+  expect(await grid.evaluate((node) => node.scrollTop)).toBe(rows * 24);
   await page.keyboard.press('PageUp');
   await expect(nameBox(page)).toHaveText('A3');
+  expect(await grid.evaluate((node) => node.scrollTop)).toBe(0);
 });
 
 test('the grid scrolls to keep the active cell visible, and reaches the last cell', async ({
@@ -174,7 +182,8 @@ test('the grid scrolls to keep the active cell visible, and reaches the last cel
   await grid.evaluate((node) => node.scrollTo(1e9, 1e9));
   await expect.poll(scroll).toMatchObject({ bottom: 0, right: 0 });
   const box = (await canvas(page).boundingBox())!;
-  await clickAt(page, { x: box.width - 4, y: box.height - 4 });
+  // Far enough in to miss overlay scroll bars, and still in the last cell.
+  await clickAt(page, { x: box.width - 20, y: box.height - 20 });
   await expect(nameBox(page)).toHaveText('CV100000');
 });
 
