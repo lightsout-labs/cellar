@@ -152,7 +152,8 @@ Notes:
 
 ## S04: Editing cells and recognizing what is typed
 
-Status: In progress
+Status: Done
+PR: #6
 
 Acceptance criteria:
 - Typing, double-clicking, F2 and the formula bar each start editing; Enter
