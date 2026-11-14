@@ -121,3 +121,41 @@ test('a file that is not an .xlsx file leaves the workbook as it was', async ({
   await expect(sheetTabs(page)).toHaveText(['Sheet1']);
   await expectCell(page, 0, 0, 'A1 kept');
 });
+
+test.describe('in Chinese and the dark theme', () => {
+  test.use({ locale: 'zh-CN', colorScheme: 'dark' });
+
+  test('the File tab and the message bar are translated and dark', async ({
+    page,
+  }) => {
+    await openApp(page);
+    await page.getByRole('tab', { name: '文件' }).click();
+    await page.getByRole('button', { name: '打开' }).hover();
+    await expect(
+      page.getByRole('tooltip', {
+        name: '从计算机中打开 Excel 工作簿 (.xlsx)',
+      }),
+    ).toBeVisible();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '打开' }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'notes.xlsx',
+      mimeType: XLSX_TYPE,
+      buffer: Buffer.from('plain text'),
+    });
+
+    const alert = page.getByRole('alert');
+    await expect(alert).toHaveText(
+      '无法打开“notes.xlsx”，因为它不是有效的 Excel 工作簿 (.xlsx)。',
+    );
+    const background = await alert.evaluate(
+      (node) => getComputedStyle(node).backgroundColor,
+    );
+    const [red, green, blue] = background.match(/\d+/g)!.map(Number);
+    expect((red! + green! + blue!) / 3).toBeLessThan(128);
+    await page.getByRole('button', { name: '关闭' }).click();
+    await expect(alert).toHaveCount(0);
+  });
+});

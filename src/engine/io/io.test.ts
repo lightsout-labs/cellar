@@ -119,6 +119,28 @@ describe('readXlsx', () => {
     expect(dropped).toEqual([]);
   });
 
+  it('fills in a formula shared across a row, with #REF! for a reference moved off the sheet', async () => {
+    const { workbook, snapshot } = await open(
+      await xlsxFile({
+        sheets: [
+          {
+            name: 'Sheet1',
+            rows: '<row r="1"><c r="A1"><v>1</v></c><c r="B1"><f t="shared" ref="B1:C1" si="0">A1*2</f><v>2</v></c><c r="C1"><f t="shared" si="0"/><v>4</v></c><c r="CU1"><f t="shared" ref="CU1:CV1" si="1">CV1+1</f><v>1</v></c><c r="CV1"><f t="shared" si="1"/><v>0</v></c></row>',
+          },
+        ],
+      }),
+    );
+    const id = snapshot.sheets[0]!.id;
+    expect(cellOf(workbook, id, 'C1')).toMatchObject({
+      value: 4,
+      formula: '=B1*2',
+    });
+    expect(workbook.cell(id, 0, 99)).toMatchObject({
+      formula: '=#REF!+1',
+      display: '#REF!',
+    });
+  });
+
   it('opens a file with charts, pivot tables, pictures and unknown formulas, and lists what it dropped', async () => {
     const { workbook, snapshot, dropped } = await open(
       await xlsxFile({
@@ -160,6 +182,19 @@ describe('readXlsx', () => {
     zip.file('readme.txt', 'not a workbook');
     await expect(
       readXlsx(await zip.generateAsync({ type: 'uint8array' }), 'archive'),
+    ).rejects.toThrow();
+    // A Word document renamed to .xlsx.
+    const word = new JSZip();
+    word.file(
+      '_rels/.rels',
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    );
+    word.file(
+      'word/document.xml',
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>',
+    );
+    await expect(
+      readXlsx(await word.generateAsync({ type: 'uint8array' }), 'letter'),
     ).rejects.toThrow();
   });
 

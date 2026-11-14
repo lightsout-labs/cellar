@@ -12,6 +12,7 @@ const en = {
     'Save the workbook to your computer as an Excel workbook (.xlsx)',
   'file.invalid':
     '"{name}" could not be opened because it is not a valid Excel workbook (.xlsx).',
+  'file.saveFailed': 'The workbook could not be saved. Please try again.',
   'file.dropped':
     'Some content of "{name}" is not supported and was not opened: {list}.',
   'dropped.chart.one': '1 chart',
@@ -101,6 +102,7 @@ const zh: Record<Key, string> = {
   'file.save': '保存',
   'file.save.tooltip': '将工作簿以 Excel 工作簿 (.xlsx) 格式保存到计算机',
   'file.invalid': '无法打开“{name}”，因为它不是有效的 Excel 工作簿 (.xlsx)。',
+  'file.saveFailed': '无法保存工作簿，请重试。',
   'file.dropped': '“{name}”中有部分内容不受支持，未能打开：{list}。',
   'dropped.chart.one': '{count} 个图表',
   'dropped.chart.other': '{count} 个图表',

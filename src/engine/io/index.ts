@@ -70,6 +70,11 @@ export async function readXlsx(
     .map(({ path }) => path);
   if (!workbookPath) throw new Error('Not an .xlsx file: no workbook');
   const workbookXml = await read(workbookPath);
+  // Another kind of document, such as a `.docx` file, has another root; a
+  // file whose elements have a namespace prefix is not read either.
+  if (!/<workbook\b[^>]*\bxmlns="[^"]*spreadsheetml/.test(workbookXml)) {
+    throw new Error('Not an .xlsx file: no spreadsheet workbook');
+  }
   const parts = relationships(
     await optional(relationshipsPath(workbookPath)),
     directory(workbookPath),
@@ -146,6 +151,9 @@ function readSheet(
     string,
     { ast: Ast | null; row: number; col: number }
   >();
+  if (!xml.includes('<worksheet')) {
+    throw new Error(`Not an .xlsx file: ${name} is not a worksheet`);
+  }
   const start = xml.indexOf('<sheetData');
   const before = xml.slice(0, Math.max(start, 0));
   const color =

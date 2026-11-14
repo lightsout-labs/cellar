@@ -32,6 +32,7 @@ interface Open {
 /** What the message bar says about the last file opened. */
 type Message =
   | { readonly kind: 'invalid'; readonly name: string }
+  | { readonly kind: 'saveFailed' }
   | {
       readonly kind: 'dropped';
       readonly name: string;
@@ -163,6 +164,8 @@ export function App({ platform }: { platform: Platform }) {
         `${snapshot.name}.xlsx`,
         await writeXlsx(snapshot),
       );
+    } catch {
+      setMessage({ kind: 'saveFailed' });
     } finally {
       setBusy(false);
     }
@@ -196,9 +199,11 @@ export function App({ platform }: { platform: Platform }) {
               text={
                 message.kind === 'invalid'
                   ? t('file.invalid').replace('{name}', () => message.name)
-                  : droppedMessage(message.name, message.dropped, language)
+                  : message.kind === 'saveFailed'
+                    ? t('file.saveFailed')
+                    : droppedMessage(message.name, message.dropped, language)
               }
-              error={message.kind === 'invalid'}
+              error={message.kind !== 'dropped'}
               onClose={() => setMessage(null)}
             />
           )}

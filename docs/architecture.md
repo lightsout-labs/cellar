@@ -185,7 +185,8 @@ Decisions that are cheap to reverse, with their reasons:
   are counted from the file's parts and left out, and so are cells beyond
   the 100,000 rows and 100 columns of a sheet. A message bar under the
   ribbon lists what was left out (R31), or says that a file is not a valid
-  `.xlsx` file, which leaves the workbook shown as it was. The other
+  `.xlsx` file, which leaves the workbook shown as it was, or that a save
+  failed. The other
   features of R30 are read by the slices that build them, and until then
   are left out without a word. A file saved by Gridworks has no formula
   results in it, and asks to be calculated when it is opened.

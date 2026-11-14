@@ -176,13 +176,14 @@ function openFile(): Promise<ChosenFile | null> {
         .catch(reject);
     });
     // Firefox may fire `cancel` just before the `change` of a file chosen,
-    // so a cancellation counts only when no change follows it.
+    // so a cancellation counts only when no change follows it; a late
+    // answer costs nothing, as no file chosen means nothing to do.
     input.addEventListener('cancel', () => {
       setTimeout(() => {
         if (changed) return;
         input.remove();
         resolve(null);
-      }, 100);
+      }, 1000);
     });
     document.body.append(input);
     input.click();

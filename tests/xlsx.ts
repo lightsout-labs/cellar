@@ -18,7 +18,6 @@ export async function xlsxFile({
   strings = [],
   numberFormats = [],
   cellFormats = [0],
-  workbookProperties = '',
   parts = {},
 }: {
   sheets: SheetPart[];
@@ -28,8 +27,6 @@ export async function xlsxFile({
   numberFormats?: [number, string][];
   /** The number format identifier of each cell format, by index. */
   cellFormats?: number[];
-  /** Attributes of `<workbookPr>`. */
-  workbookProperties?: string;
   parts?: Record<string, string>;
 }): Promise<Uint8Array> {
   const zip = new JSZip();
@@ -54,7 +51,7 @@ export async function xlsxFile({
   zip.file(
     'xl/workbook.xml',
     xml(
-      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr ${workbookProperties}/><sheets>${sheets
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr/><sheets>${sheets
         .map(
           (sheet, index) =>
             `<sheet name="${escape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 3}"/>`,
