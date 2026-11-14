@@ -478,7 +478,8 @@ Notes:
 
 ## S11: Help while typing a formula
 
-Status: In progress
+Status: Done
+PR: #15
 
 Acceptance criteria:
 - Typing a function name after `=` shows a list of matching functions;
