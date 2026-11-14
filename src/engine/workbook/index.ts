@@ -478,8 +478,9 @@ export class Workbook {
     }
     for (const { row, col, value, formula, style } of cells) {
       if (formula !== undefined) {
-        // It was stored as a formula, so it parses.
-        const ast = parse(formula.slice(1))!;
+        const ast = parse(formula.slice(1));
+        // A command read back from storage may be damaged.
+        if (!ast) throw new Error(`Invalid formula in restore: ${formula}`);
         sheet.formulas.set(key(row, col), { row, col, text: formula, ast });
       }
       (sheet.columns[col] ??= [])[row] = value;

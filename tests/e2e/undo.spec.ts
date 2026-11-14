@@ -47,6 +47,10 @@ test('undo and redo with the keyboard and the ribbon, selecting what changed', a
 
   // What undo did is stored: it is still there after a reload.
   await page.keyboard.press('ControlOrMeta+z');
+  await expect(status(page)).toHaveText('C1');
+  // A reload discards a write to storage still under way, as S01 found;
+  // this waits for the autosave, half a second after the change.
+  await page.waitForTimeout(1000);
   await page.reload();
   await expect(page.locator('canvas')).toBeVisible();
   await expectCell(page, 0, 0, 'A1 1');

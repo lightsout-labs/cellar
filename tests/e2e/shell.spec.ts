@@ -240,7 +240,10 @@ test.describe('the controls', () => {
     ) => {
       for (const [role, name, tooltip] of tooltips) {
         await page.getByRole(role, { name }).hover();
-        await expect(page.getByRole('tooltip')).toHaveText(tooltip);
+        // By name, as the tooltip before may still be fading out.
+        await expect(
+          page.getByRole('tooltip', { name: tooltip }),
+        ).toBeVisible();
       }
       // No control of the tab is left out of the list.
       await expect(page.getByRole('button')).toHaveCount(buttons);
@@ -290,6 +293,13 @@ test.describe('the controls', () => {
         (node, property) => getComputedStyle(node).getPropertyValue(property),
         property,
       );
+    // Undo, with nothing to undo, is disabled: faded, with the plain cursor.
+    const undo = page.getByRole('button', { name: 'Undo' });
+    await expect(undo).toBeDisabled();
+    expect(await style(undo, 'opacity')).toBe('0.5');
+    expect(await style(undo, 'cursor')).toBe('default');
+    expect(await style(undo, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+
     const tab = page.getByRole('tab', { name: 'View' });
     await tab.click();
     await clickCell(page, 5, 5); // The focus leaves the tab.

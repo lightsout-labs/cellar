@@ -97,7 +97,8 @@ export function App({ platform }: { platform: Platform }) {
       <TooltipProvider delayDuration={400} disableHoverableContent>
         <div className={styles.app}>
           <Ribbon
-            {...open}
+            workbook={open.workbook}
+            view={open.view}
             language={language}
             onLanguage={(language: Language) => {
               setLanguage(language);

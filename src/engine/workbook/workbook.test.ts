@@ -136,6 +136,19 @@ describe('workbook', () => {
     expect(() => Workbook.fromSnapshot(snapshot as never)).toThrow(/version/);
   });
 
+  it('refuses to restore a formula that does not parse', () => {
+    const { workbook, sheet } = setup();
+    const cell = { top: 0, left: 0, bottom: 0, right: 0 };
+    expect(() =>
+      workbook.execute({
+        type: 'restore',
+        sheet,
+        ranges: [cell],
+        cells: [{ row: 0, col: 0, value: null, formula: '=1+' }],
+      }),
+    ).toThrow(/=1\+/);
+  });
+
   it('refuses a command for a sheet that does not exist', () => {
     const { workbook } = setup();
     expect(() =>

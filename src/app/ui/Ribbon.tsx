@@ -1,6 +1,11 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { Moon, Redo2, Sun, Table2, Undo2, type LucideIcon } from 'lucide-react';
-import { useId, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  useCallback,
+  useId,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import type { Workbook } from '../../engine/workbook';
 import { MAC } from '../grid/Grid';
 import type { View } from '../grid/view';
@@ -109,7 +114,10 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 /** The Undo and Redo buttons, enabled when there is something to do. */
 function History({ workbook, view }: { workbook: Workbook; view: View }) {
   const t = useTranslation();
-  const subscribe = (listener: () => void) => workbook.subscribe(listener);
+  const subscribe = useCallback(
+    (listener: () => void) => workbook.subscribe(listener),
+    [workbook],
+  );
   const canUndo = useSyncExternalStore(subscribe, () => workbook.canUndo);
   const canRedo = useSyncExternalStore(subscribe, () => workbook.canRedo);
   const key = MAC ? '⌘' : 'Ctrl+';
