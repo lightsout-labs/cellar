@@ -8,6 +8,12 @@ export const ZOOM_MAX = 2;
 
 const START = { row: 0, col: 0 };
 
+/** A change to the sheets of a workbook. */
+export type SheetCommand = Extract<
+  Command,
+  { type: 'addSheet' | 'deleteSheet' | 'setSheet' }
+>;
+
 /** An entry being typed into the active cell. */
 export interface Entry {
   readonly text: string;
@@ -132,7 +138,7 @@ export class View {
    * Makes a change to the sheets, after committing a waiting entry, and
    * shows a sheet it adds.
    */
-  execute(command: Command): void {
+  execute(command: SheetCommand): void {
     this.commit();
     const change = this.workbook.execute(command);
     if (command.type === 'addSheet') this.showSheet(change.sheet);
@@ -172,8 +178,12 @@ export class View {
 
   private reverse(run: () => Change | null): void {
     this.cancel();
+    const count = this.workbook.sheets.length;
     const change = run();
     if (!change) return;
+    // A deleted sheet leaves the shown one, unless it was the shown one,
+    // which `keepSheet` has already left.
+    if (this.workbook.sheets.length < count) return;
     if (change.ranges.length > 0) {
       this.change({
         sheet: change.sheet,

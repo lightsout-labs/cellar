@@ -241,6 +241,12 @@ describe('View', () => {
     expect(view.state.selection).toEqual(single({ row: 0, col: 0 }));
     view.redo();
     expect(view.state.sheet).toBe(second);
+    // Undoing the addition of a sheet that is not shown stays where it is.
+    view.showSheet(sheet);
+    view.undo();
+    expect(view.state.sheet).toBe(sheet);
+    view.redo();
+    view.showSheet(second);
     view.select(single({ row: 4, col: 4 }));
     view.execute({ type: 'setSheet', sheet: second, color: '#30a46c' });
     view.undo();

@@ -278,6 +278,37 @@ Acceptance criteria:
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
 
+Notes:
+- Sheet changes are the commands `addSheet` (empty, or a copy with
+  `copyOf`), `deleteSheet`, `restoreSheet` (the undo of a deletion, holding
+  the sheet's snapshot) and `setSheet` (name, color, index). The workbook
+  fills in the identifier and name of an `addSheet` (`sheetN`, `SheetN`,
+  copies `Sheet1 (2)`) for its listeners, so a replay gives the same sheets.
+  `execute` now returns the `Change`; for sheet commands it has no ranges.
+- `sheetNameProblem` applies Excel's rules (blank, over 31 characters,
+  `: \ / ? * [ ]`, a leading or trailing apostrophe, a name taken in any
+  case). S07 must rewrite references to a renamed sheet and turn references
+  to a deleted one into `#REF!`; neither exists yet.
+- `View` subscribes to the workbook in its constructor, before autosave
+  and the grid, and leaves a deleted sheet before they read it. Switching
+  sheets selects A1 and scrolls the grid to the top; each sheet's
+  selection is not remembered. `View.execute` runs sheet commands only.
+- The sheet tabs are `src/app/ui/SheetTabs.tsx`: click shows, double-click
+  renames (Enter or leaving the box keeps a valid name, Escape cancels),
+  pointer drag moves (`dropIndex` in `sheets.ts`), right-click opens the
+  Radix context menu (Insert and Duplicate place the sheet after the tab,
+  as the + button does after the shown sheet). Menu items have labels and
+  no tooltips. Tab colors are eight fixed `#rrggbb` values (`TAB_COLORS`),
+  shown as a stripe under the tab. The name problem is shown in a portal,
+  as the scrolling tab strip clips anything above it.
+- Text boxes other than the grid's editor (the sheet name) keep Ctrl/Cmd+Z
+  for their own typing: the window shortcut skips `input[type=text]`.
+- A save deletes every sheet record of the workbook before writing the
+  sheets, so a deleted sheet leaves no record; writing only the changed
+  sheets is still to do. Sheet records now may carry `color`.
+- No keyboard shortcut switches or inserts sheets yet (Ctrl+Page Up/Down
+  are taken by browsers); no criterion asks for one.
+
 ## S07: Formulas: operators, references, errors and recalculation
 
 Status: Todo

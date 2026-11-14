@@ -67,6 +67,11 @@ export function SheetTabs({
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     const current = press.current;
     if (!current) return;
+    // The button was released somewhere the tab did not hear of it.
+    if ((event.buttons & 1) === 0) {
+      onPointerCancel();
+      return;
+    }
     if (!current.dragging) {
       if (Math.abs(event.clientX - current.x) < DRAG_START) return;
       current.dragging = true;
@@ -76,6 +81,10 @@ export function SheetTabs({
       from: current.index,
       to: targetOf(current.index, event.clientX),
     });
+  };
+  const onPointerCancel = () => {
+    press.current = null;
+    setDrop(null);
   };
   const onPointerUp = (event: PointerEvent) => {
     const current = press.current;
@@ -125,6 +134,7 @@ export function SheetTabs({
               onPointerDown={(event) => onPointerDown(index, event)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
               onShow={() => view.showSheet(sheet.id)}
               onRename={() => setRenaming(sheet.id)}
               onInsert={() =>
@@ -173,6 +183,7 @@ function SheetTab({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
   onShow,
   onRename,
   onInsert,
@@ -189,6 +200,7 @@ function SheetTab({
   onPointerDown: (event: PointerEvent) => void;
   onPointerMove: (event: PointerEvent<HTMLElement>) => void;
   onPointerUp: (event: PointerEvent) => void;
+  onPointerCancel: () => void;
   onShow: () => void;
   onRename: () => void;
   onInsert: () => void;
@@ -221,6 +233,8 @@ function SheetTab({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onLostPointerCapture={onPointerCancel}
           >
             {sheet.name}
           </button>
@@ -326,8 +340,9 @@ function MenuItem({
 
 /**
  * The box in place of a tab where its sheet is renamed. Enter keeps a name
- * Excel accepts, and says what is wrong with any other; Escape and leaving
- * the box keep the name the sheet had.
+ * Excel accepts, and says what is wrong with any other; leaving the box
+ * keeps a name Excel accepts, as Excel does; Escape keeps the name the sheet
+ * had.
  */
 function NameEditor({
   workbook,
@@ -340,6 +355,13 @@ function NameEditor({
 }) {
   const t = useTranslation();
   const [name, setName] = useState(sheet.name);
+  // The box may lose the keyboard as it closes, which must not end it twice.
+  const ended = useRef(false);
+  const end = (name: string | null) => {
+    if (ended.current) return;
+    ended.current = true;
+    onDone(name);
+  };
   // Shown above the box, outside the tab strip, which would clip it.
   const [problem, setProblem] = useState<{
     text: string;
@@ -360,16 +382,18 @@ function NameEditor({
           setName(event.target.value);
           setProblem(null);
         }}
-        onBlur={() => onDone(null)}
+        onBlur={() =>
+          end(workbook.sheetNameProblem(name, sheet.id) ? null : name)
+        }
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
-            onDone(null);
+            end(null);
           } else if (event.key === 'Enter') {
             event.preventDefault();
             const found = workbook.sheetNameProblem(name, sheet.id);
             if (!found) {
-              onDone(name);
+              end(name);
               return;
             }
             const box = event.currentTarget.getBoundingClientRect();

@@ -149,4 +149,50 @@ test('the last sheet cannot be deleted, and a name Excel refuses is refused', as
   // Escape keeps the name it had.
   await name.press('Escape');
   await expect(tabs(page)).toHaveText(['Sheet1', 'Sheet2']);
+  // Leaving the box keeps a name Excel accepts, as Excel does.
+  await tab(page, 'Sheet2').dblclick();
+  await name.fill('Notes');
+  await clickCell(page, 2, 2);
+  await expect(tabs(page)).toHaveText(['Sheet1', 'Notes']);
+});
+
+test.describe('in the dark theme', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('the menu and the name problem are dark, with hover and disabled states', async ({
+    page,
+  }) => {
+    const style = (locator: Locator, property: string) =>
+      locator.evaluate(
+        (node, property) => getComputedStyle(node).getPropertyValue(property),
+        property,
+      );
+    const brightness = async (locator: Locator, property: string) => {
+      const [red, green, blue] = (await style(locator, property))
+        .match(/\d+/g)!
+        .map(Number);
+      return (red! + green! + blue!) / 3;
+    };
+    await openApp(page);
+    await tab(page, 'Sheet1').click({ button: 'right' });
+    const menuBox = page.getByRole('menu');
+    const rename = page.getByRole('menuitem', { name: 'Rename' });
+    expect(await brightness(menuBox, 'background-color')).toBeLessThan(64);
+    expect(await brightness(rename, 'color')).toBeGreaterThan(192);
+    const remove = page.getByRole('menuitem', { name: 'Delete', exact: true });
+    expect(await style(remove, 'opacity')).toBe('0.5');
+    // Hovering highlights an item, lighter than the menu.
+    await rename.hover();
+    await expect
+      .poll(() => brightness(rename, 'background-color'))
+      .toBeGreaterThan(await brightness(menuBox, 'background-color'));
+    await rename.click();
+
+    const name = page.getByRole('textbox', { name: 'Sheet name' });
+    await name.fill('a/b');
+    await name.press('Enter');
+    const alert = page.getByRole('alert');
+    await expect(alert).toBeVisible();
+    expect(await brightness(alert, 'background-color')).toBeLessThan(64);
+  });
 });
