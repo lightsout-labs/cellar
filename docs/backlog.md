@@ -99,7 +99,8 @@ Notes:
 
 ## S03: Selecting cells and moving around a large sheet
 
-Status: In progress
+Status: Done
+PR: #5
 
 Acceptance criteria:
 - A sheet has at least 100,000 rows and 100 columns, all reachable by
