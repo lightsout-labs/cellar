@@ -65,10 +65,14 @@ export function evaluate(ast: Ast, context: Context): Value {
   }
 }
 
-/** The number an operand stands for: an empty cell counts as zero. */
+/**
+ * The number an operand stands for: an empty cell counts as zero, and
+ * `TRUE` as one.
+ */
 function toNumber(value: Value): number | Extract<Value, object> {
   if (value === null) return 0;
   if (typeof value === 'string') return VALUE_ERROR;
+  if (typeof value === 'boolean') return Number(value);
   return value;
 }
 

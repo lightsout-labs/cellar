@@ -1,20 +1,67 @@
+import {
+  format,
+  getFormatDateInfo,
+  getFormatFromId,
+  isDateFormat,
+  isPercentFormat,
+  parseValue,
+} from 'numfmt';
 import { isError, type Value } from '../value';
 
-const NUMBER = /^\s*[+-]?(?:\d+\.?\d*|\.\d+)\s*$/;
+/** The format of a cell that was given none. */
+export const GENERAL = 'General';
 
-/**
- * The value that a typed entry stands for: a number when it reads as one,
- * an empty cell when nothing was typed, and otherwise the text itself.
- */
-export function parseInput(text: string): number | string | null {
-  if (text === '') return null;
-  return NUMBER.test(text) ? Number(text) : text;
+/** What a typed entry stands for. */
+export interface Input {
+  readonly value: number | string | boolean | null;
+  /** The format code that the way it was typed implies, as `0%` for `12%`. */
+  readonly format?: string;
 }
 
-/** The text that a cell shows for a value. */
-export function formatValue(value: Value): string {
+/**
+ * Recognizes a typed entry as Excel does: a number, a date, a time, a
+ * percentage or a boolean, with the format it implies; an empty cell when
+ * nothing was typed; and otherwise the text itself. Formulas are not
+ * recognized here.
+ */
+export function parseInput(text: string): Input {
+  if (text === '') return { value: null };
+  const parsed = parseValue(text);
+  if (!parsed) return { value: text };
+  if (typeof parsed.value === 'boolean') return { value: parsed.value };
+  return parsed.formatId === undefined
+    ? { value: parsed.value }
+    : { value: parsed.value, format: getFormatFromId(parsed.formatId) };
+}
+
+/** The text that a cell shows for a value, in a format code. */
+export function formatValue(value: Value, code: string = GENERAL): string {
   if (value === null) return '';
   if (isError(value)) return value.error;
-  if (typeof value === 'number') return String(Number(value.toPrecision(15)));
-  return value;
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  if (typeof value === 'string') return value;
+  return format(code, value);
+}
+
+/**
+ * The text that edits a value, as the formula bar shows it: numbers in
+ * full, percentages with their sign, and dates and times in a form that is
+ * read back as the same value.
+ */
+export function editText(value: Value, code: string = GENERAL): string {
+  if (typeof value !== 'number') return formatValue(value);
+  if (isPercentFormat(code)) return `${plain(value * 100)}%`;
+  if (isDateFormat(code)) {
+    const { type } = getFormatDateInfo(code);
+    const parts = [];
+    if (type !== 'time') parts.push('m/d/yyyy');
+    if (type !== 'date') parts.push('h:mm:ss AM/PM');
+    return format(parts.join(' '), value);
+  }
+  return plain(value);
+}
+
+/** A number with the 15 significant digits that Excel keeps. */
+function plain(value: number): string {
+  return String(Number(value.toPrecision(15)));
 }

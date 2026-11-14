@@ -20,7 +20,8 @@ the workbook, the workbook parses the input, stores it, records the inverse
 for undo, marks dependent cells dirty and notifies its listeners; the grid
 repaints the visible cells, reading each one from the workbook (which
 calculates a dirty cell when it is read), and the app asks the platform to
-save the changed sheet to browser storage a moment later.
+record the command in browser storage at once and to save the changed
+sheet a moment later.
 
 ## Stack
 
@@ -59,12 +60,12 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()`, `cell(sheet, row, col)` (value, formula, display text, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot()` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot()` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `shift(ast, move)`, `functions` (name, argument hints) | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete. |
-| `engine/format` | `formatValue(value, code)`, `parseInput(text)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
+| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes)`, `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | The mapping between a workbook snapshot and ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
-| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, edit state, End mode) | Canvas drawing and virtualization; frozen panes; hit testing; text measurement and caching; selection, resize, fill-handle and reference-picking gestures; the in-cell editor; keyboard navigation as in Excel (R2, R3, R8, R9, R16, R21, R45). |
+| `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
+| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, entry, End mode) | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the in-cell editor and its Enter and Edit modes; keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus, dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -100,6 +101,18 @@ Decisions that are cheap to reverse, with their reasons:
   selection the same way.
 - **Dates are Excel serial numbers** with a date format, as in Excel, so
   date arithmetic and `.xlsx` round trips need no conversion.
+- **Typing sets a cell's format.** A typed date, time, percentage or
+  number with separators sets the number format of its cell's style; a
+  plain number keeps the format the cell has, and Delete clears values
+  and formulas but not formats, as in Excel. The formula bar and the
+  editor start from `editText`, which reads back as the same value.
+- **Cells align by the type of their value**, as Excel's General
+  alignment does: numbers right, text left, booleans and errors centered.
+  Text that is too long runs over the empty cells to its right.
+- **An entry has two modes**, as in Excel. Typing starts Enter mode, where
+  an arrow commits and moves; F2, a double-click and the formula bar start
+  Edit mode, where the arrows move the caret. Enter and Tab commit and
+  move in both, and Tab therefore stays in the grid.
 - **Number and date formats do not change with the interface language.**
   R41 covers the interface only; one behavior keeps files and tests the
   same in both languages. Function names stay in English in both languages,
@@ -128,14 +141,19 @@ heights and column widths, merges, frozen panes, filters, validation rules,
 conditional formats, notes and hyperlinks. It is the only form in which a
 workbook leaves the engine.
 
-- **Browser storage**: an IndexedDB database named `cellar` with two object
-  stores. `workbooks` holds one record for each workbook (identifier, name,
-  modification time, workbook properties). `sheets` holds one record for
-  each sheet, keyed by workbook and sheet identifier, so that autosave
-  rewrites only the sheets that changed. Autosave runs half a second after
-  the last change and when the page is hidden. A save cannot be started
-  while the page unloads: browsers discard an IndexedDB transaction that
-  begins then.
+- **Browser storage**: an IndexedDB database named `cellar` with three
+  object stores. `workbooks` holds one record for each workbook
+  (identifier, name, modification time, workbook properties). `sheets`
+  holds one record for each sheet, keyed by workbook and sheet identifier,
+  so that autosave rewrites only the sheets that changed. `changes` holds
+  each command executed since the workbook was last saved, keyed by
+  workbook and sequence number. Each command is recorded the moment it is
+  executed; the whole workbook is saved half a second after the last change
+  and when the page is hidden, and that save deletes the changes it
+  includes. Opening a workbook replays its changes over its last save.
+  A save cannot be started while the page unloads: browsers discard an
+  IndexedDB transaction that begins then. See
+  [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
 - **Preferences** (language, theme): through `Platform.preferences`, stored
   in `localStorage` by the web implementation, under `cellar.language` and
   `cellar.theme`. Without a stored choice the language is that of the

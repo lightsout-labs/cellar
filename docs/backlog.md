@@ -152,7 +152,7 @@ Notes:
 
 ## S04: Editing cells and recognizing what is typed
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Typing, double-clicking, F2 and the formula bar each start editing; Enter

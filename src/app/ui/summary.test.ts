@@ -42,7 +42,7 @@ describe('the summary of the selection', () => {
     // Numbers are shown as the cells show them.
     const thirds = setup([0, 0, '1'], [1, 0, '1'], [2, 0, '0']);
     expect(thirds.summary(thirds.range(0, 0, 2, 0))?.average).toBe(
-      '0.666666666666667',
+      '0.666666667',
     );
   });
 
