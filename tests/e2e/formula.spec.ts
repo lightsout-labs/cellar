@@ -60,6 +60,25 @@ test('formulas combine operators, ranges and functions, and show errors', async 
   await expectCell(page, 3, 0, 'A4 big!');
 });
 
+test('functions of each family give their results, and errors for wrong arguments', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, '10');
+  await enter(page, '20');
+  await enter(page, '=SUMIF(A1:A2,">15")+ROUND(PI(),2)');
+  await enter(page, '=IFERROR(STDEV.S(A1:A2)/0,"none")');
+  await enter(page, '=SQRT("x")');
+  await enter(page, '=ROUND(1)');
+
+  await expectCell(page, 2, 0, 'A3 23.14');
+  await expectCell(page, 3, 0, 'A4 none');
+  await expectCell(page, 4, 0, 'A5 #VALUE!');
+  // Too few arguments: not a formula, so kept as text, as Excel refuses it.
+  await expectCell(page, 5, 0, 'A6 =ROUND(1)');
+});
+
 test('a circular reference is reported, and the app keeps working', async ({
   page,
 }) => {

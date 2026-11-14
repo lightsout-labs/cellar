@@ -1,17 +1,10 @@
-import { parseInput } from '../format';
-import { isError, type ErrorValue, type Value } from '../value';
+import type { ErrorValue, Value } from '../value';
+import { areaOf, evaluate, SHEET_COLUMNS, SHEET_ROWS } from './evaluate';
+import { LIBRARY } from './library';
+import { error, type Area, type ErrorCode } from './values';
 
-/** The number of rows and columns of every sheet (R1). */
-export const SHEET_ROWS = 100_000;
-export const SHEET_COLUMNS = 100;
-
-/** A rectangle of cells, its bounds included. Rows and columns count from zero. */
-export interface Area {
-  readonly top: number;
-  readonly left: number;
-  readonly bottom: number;
-  readonly right: number;
-}
+export { evaluate, SHEET_COLUMNS, SHEET_ROWS };
+export type { Area };
 
 /**
  * One end of a range. A whole column has no row, and a whole row no column.
@@ -88,8 +81,15 @@ export interface Context {
    * when `sheet` is absent; `#REF!` when no sheet has that name.
    */
   cell(sheet: string | undefined, row: number, col: number): Value;
-  /** The values of the cells of an area that are not empty, or `#REF!`. */
-  cells(sheet: string | undefined, area: Area): readonly Value[] | ErrorValue;
+  /**
+   * Visits the cells of an area that are not empty, in no set order, with
+   * their values and places; gives `#REF!` when no sheet has that name.
+   */
+  cells(
+    sheet: string | undefined,
+    area: Area,
+    visit: (value: Value, row: number, col: number) => void,
+  ): ErrorValue | undefined;
 }
 
 /**
@@ -104,15 +104,6 @@ export type Move =
       readonly to: string;
     }
   | { readonly type: 'offset'; readonly rows: number; readonly cols: number };
-
-/** The seven error values of Excel (R13). */
-type ErrorCode =
-  '#NULL!' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#NAME?' | '#NUM!' | '#N/A';
-
-const error = (code: ErrorCode): ErrorValue => ({ error: code });
-const VALUE = error('#VALUE!');
-const DIV0 = error('#DIV/0!');
-const NUM = error('#NUM!');
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -150,15 +141,8 @@ const NAME_GOES_ON = /[\w.(!¡-￿]/y;
 const MAX_ROW = 1_048_576;
 const MAX_COLUMN = 16_384;
 
-/** Arguments that each known function accepts. */
-const ARITY: Record<string, readonly [number, number]> = {
-  AVERAGE: [1, 255],
-  COUNT: [1, 255],
-  IF: [2, 3],
-  MAX: [1, 255],
-  MIN: [1, 255],
-  SUM: [1, 255],
-};
+/** The prefix that files give the names of functions newer than 2007. */
+const PREFIX = '_XLFN.';
 
 class Parser {
   private at = 0;
@@ -285,12 +269,19 @@ class Parser {
         if (separator !== ',') return null;
       }
     }
-    const upper = name.toUpperCase();
-    const arity = ARITY[upper];
-    if (arity && (args.length < arity[0] || args.length > arity[1])) {
+    let upper = name.toUpperCase();
+    if (upper.startsWith(PREFIX) && upper.slice(PREFIX.length) in LIBRARY) {
+      upper = upper.slice(PREFIX.length);
+    }
+    const spec = LIBRARY[upper];
+    if (!spec) return { type: 'call', name, args };
+    const { length } = args;
+    if (length < spec.min || length > spec.max) return null;
+    if (spec.pairs && (length - spec.min) % 2 !== 0) return null;
+    if (args.some((arg, index) => spec.range?.(index) && !referable(arg))) {
       return null;
     }
-    return { type: 'call', name: arity ? upper : name, args };
+    return { type: 'call', name: upper, args };
   }
 
   /**
@@ -394,6 +385,14 @@ class Parser {
   }
 }
 
+/** Whether an argument can give a reference: not a constant or an operation. */
+function referable(ast: Ast): boolean {
+  if (ast.type === 'paren') return referable(ast.inner);
+  return (
+    ['range', 'call', 'name', 'error'].includes(ast.type) || isReference(ast)
+  );
+}
+
 function isReference(ast: Ast): boolean {
   return (
     ast.type === 'range' ||
@@ -421,8 +420,12 @@ export function parse(text: string): Ast | null {
 // ---------------------------------------------------------------------------
 // Printing and rewriting
 
-/** The text of a formula, without its leading `=`, as Excel writes it. */
-export function print(ast: Ast): string {
+/**
+ * The text of a formula, without its leading `=`, as Excel writes it; for
+ * a `file`, with the prefix that files give newer functions.
+ */
+export function print(ast: Ast, { file = false } = {}): string {
+  const print_ = (node: Ast) => print(node, { file });
   switch (ast.type) {
     case 'number':
       return String(ast.value).toUpperCase();
@@ -439,15 +442,17 @@ export function print(ast: Ast): string {
       return prefix + corner(ast.start) + end;
     }
     case 'unary':
-      return ast.operator + print(ast.operand);
+      return ast.operator + print_(ast.operand);
     case 'percent':
-      return `${print(ast.operand)}%`;
+      return `${print_(ast.operand)}%`;
     case 'binary':
-      return print(ast.left) + ast.operator + print(ast.right);
+      return print_(ast.left) + ast.operator + print_(ast.right);
     case 'paren':
-      return `(${print(ast.inner)})`;
-    case 'call':
-      return `${ast.name}(${ast.args.map(print).join(',')})`;
+      return `(${print_(ast.inner)})`;
+    case 'call': {
+      const prefix = file && LIBRARY[ast.name]?.prefixed ? '_xlfn.' : '';
+      return `${prefix}${ast.name}(${ast.args.map(print_).join(',')})`;
+    }
     case 'missing':
       return '';
     case 'name':
@@ -595,19 +600,6 @@ export function references(
   return found;
 }
 
-function areaOf(range: Extract<Ast, { type: 'range' }>): Area {
-  const { start, end = range.start } = range;
-  // Both ends of a range have rows, or neither has; columns alike.
-  const [top, bottom] =
-    start.row === null ? [0, SHEET_ROWS - 1] : order(start.row, end.row!);
-  const [left, right] =
-    start.col === null ? [0, SHEET_COLUMNS - 1] : order(start.col, end.col!);
-  return { top, left, bottom, right };
-}
-
-const order = (a: number, b: number): [number, number] =>
-  a <= b ? [a, b] : [b, a];
-
 /** The letters of a column, counted from zero: `A`, ..., `Z`, `AA`, ... */
 export function columnName(col: number): string {
   let name = '';
@@ -616,306 +608,3 @@ export function columnName(col: number): string {
   }
   return name;
 }
-
-// ---------------------------------------------------------------------------
-// Evaluation
-
-/** A reference as an operand evaluates to, before its cells are read. */
-class Reference {
-  constructor(
-    readonly sheet: string | undefined,
-    readonly area: Area,
-  ) {}
-}
-
-type Result = Value | Reference;
-
-/**
- * Calculates the value of a parsed formula. An empty result, as that of a
- * reference to an empty cell, is 0, as Excel shows it.
- */
-export function evaluate(ast: Ast, context: Context): Value {
-  return scalar(run(ast, context), context) ?? 0;
-}
-
-function run(ast: Ast, context: Context): Result {
-  switch (ast.type) {
-    case 'number':
-    case 'string':
-    case 'boolean':
-    case 'error':
-      return ast.value;
-    case 'missing':
-      return 0;
-    case 'name':
-      return error('#NAME?');
-    case 'range':
-      return new Reference(ast.sheet, areaOf(ast));
-    case 'paren':
-      return run(ast.inner, context);
-    case 'unary': {
-      const operand = scalar(run(ast.operand, context), context);
-      if (ast.operator === '+') return operand;
-      const number = toNumber(operand);
-      return isError(number) ? number : -number;
-    }
-    case 'percent': {
-      const number = toNumber(scalar(run(ast.operand, context), context));
-      return isError(number) ? number : number / 100;
-    }
-    case 'binary':
-      return ast.operator === ' '
-        ? intersect(run(ast.left, context), run(ast.right, context))
-        : binary(
-            ast.operator,
-            scalar(run(ast.left, context), context),
-            scalar(run(ast.right, context), context),
-          );
-    case 'call': {
-      const implementation = LIBRARY[ast.name];
-      return implementation
-        ? implementation(ast.args, context)
-        : error('#NAME?');
-    }
-  }
-}
-
-/**
- * The one value of a result. A range where one value is expected gives
- * its cell in the formula's row or column, as Excel does.
- */
-function scalar(result: Result, context: Context): Value {
-  if (!(result instanceof Reference)) return result;
-  const { sheet, area } = result;
-  if (area.top === area.bottom && area.left === area.right) {
-    return context.cell(sheet, area.top, area.left);
-  }
-  if (area.left === area.right && within(context.row, area.top, area.bottom)) {
-    return context.cell(sheet, context.row, area.left);
-  }
-  if (area.top === area.bottom && within(context.col, area.left, area.right)) {
-    return context.cell(sheet, area.top, context.col);
-  }
-  return VALUE;
-}
-
-const within = (n: number, low: number, high: number) => n >= low && n <= high;
-
-function intersect(left: Result, right: Result): Result {
-  if (!(left instanceof Reference)) return isError(left) ? left : VALUE;
-  if (!(right instanceof Reference)) return isError(right) ? right : VALUE;
-  if (left.sheet?.toLowerCase() !== right.sheet?.toLowerCase()) return VALUE;
-  const a = left.area;
-  const b = right.area;
-  const area = {
-    top: Math.max(a.top, b.top),
-    left: Math.max(a.left, b.left),
-    bottom: Math.min(a.bottom, b.bottom),
-    right: Math.min(a.right, b.right),
-  };
-  if (area.top > area.bottom || area.left > area.right) {
-    return error('#NULL!');
-  }
-  return new Reference(left.sheet, area);
-}
-
-function binary(operator: BinaryOperator, left: Value, right: Value): Value {
-  if (isError(left)) return left;
-  if (isError(right)) return right;
-  if (operator === '&') return toText(left) + toText(right);
-  if (
-    operator === '=' ||
-    operator === '<>' ||
-    operator === '<' ||
-    operator === '>' ||
-    operator === '<=' ||
-    operator === '>='
-  ) {
-    const order = compare(left, right);
-    switch (operator) {
-      case '=':
-        return order === 0;
-      case '<>':
-        return order !== 0;
-      case '<':
-        return order < 0;
-      case '>':
-        return order > 0;
-      case '<=':
-        return order <= 0;
-      default:
-        return order >= 0;
-    }
-  }
-  const a = toNumber(left);
-  if (isError(a)) return a;
-  const b = toNumber(right);
-  if (isError(b)) return b;
-  let result: number;
-  switch (operator) {
-    case '+':
-      result = a + b;
-      break;
-    case '-':
-      result = a - b;
-      break;
-    case '*':
-      result = a * b;
-      break;
-    case '/':
-      if (b === 0) return DIV0;
-      result = a / b;
-      break;
-    default:
-      if (a === 0 && b === 0) return NUM;
-      if (a === 0 && b < 0) return DIV0;
-      result = a ** b;
-  }
-  return Number.isFinite(result) ? result : NUM;
-}
-
-/**
- * The order of two values as Excel compares them: numbers before text
- * before booleans, text without regard to case, and an empty cell as the
- * empty value of the other's type.
- */
-function compare(left: Value, right: Value): number {
-  const a = left ?? emptyLike(right);
-  const b = right ?? emptyLike(left);
-  const rank = (value: Value) =>
-    typeof value === 'number' ? 0 : typeof value === 'string' ? 1 : 2;
-  if (rank(a) !== rank(b)) return rank(a) - rank(b);
-  if (typeof a === 'string' && typeof b === 'string') {
-    const x = a.toLowerCase();
-    const y = b.toLowerCase();
-    return x < y ? -1 : x > y ? 1 : 0;
-  }
-  // Numbers are equal when they agree to the 15 digits Excel keeps.
-  return digits15(Number(a)) - digits15(Number(b));
-}
-
-const digits15 = (n: number) => Number(n.toPrecision(15));
-
-function emptyLike(value: Value): Value {
-  if (typeof value === 'string') return '';
-  if (typeof value === 'boolean') return false;
-  return 0;
-}
-
-/**
- * The number an operand stands for: an empty cell is 0, a boolean 1 or 0,
- * and text a number only if it reads as one.
- */
-function toNumber(value: Value): number | ErrorValue {
-  if (value === null) return 0;
-  if (typeof value === 'boolean') return Number(value);
-  if (typeof value === 'string') {
-    const read = parseInput(value.trim()).value;
-    return typeof read === 'number' ? read : VALUE;
-  }
-  return value;
-}
-
-/** The text an operand of `&` stands for: numbers to 15 digits. */
-function toText(value: Exclude<Value, ErrorValue>): string {
-  if (value === null) return '';
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  if (typeof value === 'number') {
-    return String(digits15(value)).toUpperCase();
-  }
-  return value;
-}
-
-function toBoolean(value: Value): boolean | ErrorValue {
-  if (isError(value)) return value;
-  if (typeof value === 'string') {
-    const upper = value.toUpperCase();
-    if (upper === 'TRUE' || upper === 'FALSE') return upper === 'TRUE';
-    return VALUE;
-  }
-  return Boolean(value);
-}
-
-// ---------------------------------------------------------------------------
-// Functions
-
-type Implementation = (args: readonly Ast[], context: Context) => Result;
-
-/**
- * The numbers of the arguments of a function such as `SUM`: in ranges,
- * only the numbers; typed directly, anything that reads as a number. The
- * first error found is given instead.
- */
-function numbers(
-  args: readonly Ast[],
-  context: Context,
-): number[] | ErrorValue {
-  const found: number[] = [];
-  for (const arg of args) {
-    const result = run(arg, context);
-    if (result instanceof Reference) {
-      const values = context.cells(result.sheet, result.area);
-      if (!Array.isArray(values)) return values as ErrorValue;
-      for (const value of values) {
-        if (typeof value === 'number') found.push(value);
-        else if (isError(value)) return value;
-      }
-    } else {
-      const number = toNumber(result);
-      if (isError(number)) return number;
-      found.push(number);
-    }
-  }
-  return found;
-}
-
-function aggregate(
-  combine: (values: number[]) => number | ErrorValue,
-): Implementation {
-  return (args, context) => {
-    const values = numbers(args, context);
-    if (!Array.isArray(values)) return values;
-    const result = combine(values);
-    return typeof result === 'number' && !Number.isFinite(result)
-      ? NUM
-      : result;
-  };
-}
-
-const sum = (values: number[]) => values.reduce((total, n) => total + n, 0);
-
-/** The extreme of numbers, without spreading a whole column as arguments. */
-const extreme =
-  (pick: (a: number, b: number) => number) => (values: number[]) =>
-    values.length === 0 ? 0 : values.reduce((a, b) => pick(a, b));
-
-const LIBRARY: Record<string, Implementation> = {
-  SUM: aggregate(sum),
-  AVERAGE: aggregate((values) =>
-    values.length === 0 ? DIV0 : sum(values) / values.length,
-  ),
-  MIN: aggregate(extreme(Math.min)),
-  MAX: aggregate(extreme(Math.max)),
-  COUNT(args, context) {
-    let count = 0;
-    for (const arg of args) {
-      const result = run(arg, context);
-      if (result instanceof Reference) {
-        const values = context.cells(result.sheet, result.area);
-        if (!Array.isArray(values)) continue;
-        for (const value of values) {
-          if (typeof value === 'number') count++;
-        }
-      } else if (!isError(result) && !isError(toNumber(result))) {
-        count++;
-      }
-    }
-    return count;
-  },
-  IF(args, context) {
-    const condition = toBoolean(scalar(run(args[0]!, context), context));
-    if (typeof condition !== 'boolean') return condition;
-    const branch = args[condition ? 1 : 2];
-    return branch ? run(branch, context) : false;
-  },
-};

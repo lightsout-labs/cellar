@@ -1,80 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { calculate, error } from '../../../tests/formula';
 import type { Value } from '../value';
 import {
-  evaluate,
   parse,
   print,
   references,
   shift,
   SHEET_COLUMNS,
   SHEET_ROWS,
-  type Area,
-  type Context,
 } from './index';
-
-/** The sheets of the test workbook, besides the formula's own. */
-const SHEETS = ['Sheet2', 'My Sheet', "It's"];
-
-/**
- * A context over cells named as in `A1` or `Sheet2!A1`, for a formula in
- * the cell `at`.
- */
-function context(cells: Record<string, Value>, at = 'Z100'): Context {
-  const position = locate(at);
-  const sheetOf = (name: string | undefined) =>
-    name === undefined
-      ? ''
-      : SHEETS.find((each) => each.toLowerCase() === name.toLowerCase());
-  const located = Object.entries(cells).map(([name, value]) => {
-    const [sheet, cell] = name.includes('!') ? name.split('!') : ['', name];
-    return { sheet: sheet!, ...locate(cell!), value };
-  });
-  return {
-    ...position,
-    cell(sheet, row, col) {
-      const found = sheetOf(sheet);
-      if (found === undefined) return { error: '#REF!' };
-      const cell = located.find(
-        (each) => each.sheet === found && each.row === row && each.col === col,
-      );
-      return cell?.value ?? null;
-    },
-    cells(sheet, area: Area) {
-      const found = sheetOf(sheet);
-      if (found === undefined) return { error: '#REF!' };
-      return located
-        .filter(
-          ({ sheet, row, col, value }) =>
-            sheet === found &&
-            value !== null &&
-            row >= area.top &&
-            row <= area.bottom &&
-            col >= area.left &&
-            col <= area.right,
-        )
-        .map(({ value }) => value);
-    },
-  };
-}
-
-function locate(name: string): { row: number; col: number } {
-  const [, letters, digits] = /^([A-Z]+)(\d+)$/.exec(name)!;
-  let col = 0;
-  for (const letter of letters!) col = col * 26 + letter.charCodeAt(0) - 64;
-  return { row: Number(digits) - 1, col: col - 1 };
-}
-
-function calculate(
-  text: string,
-  cells: Record<string, Value> = {},
-  at?: string,
-): Value {
-  const ast = parse(text);
-  if (!ast) throw new Error(`not a formula: ${text}`);
-  return evaluate(ast, context(cells, at));
-}
-
-const error = (code: string) => ({ error: code });
 
 describe('formula operators', () => {
   it.each<[string, Value]>([

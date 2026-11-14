@@ -240,17 +240,26 @@ export class Calculation {
         const sheet = resolve(name);
         return sheet ? this.cell(sheet, row, col) : REF_ERROR;
       },
-      cells: (name: string | undefined, area: Area) => {
+      cells: (
+        name: string | undefined,
+        area: Area,
+        visit: (value: Value, row: number, col: number) => void,
+      ) => {
         const sheet = resolve(name);
-        return sheet ? this.cells(sheet, area) : REF_ERROR;
+        if (!sheet) return REF_ERROR;
+        this.cells(sheet, area, visit);
+        return undefined;
       },
     };
   }
 
-  /** The values of the cells of an area that are not empty. */
-  private cells(sheet: Sheet, area: Area): Value[] {
+  /** Visits the cells of an area that are not empty. */
+  private cells(
+    sheet: Sheet,
+    area: Area,
+    visit: (value: Value, row: number, col: number) => void,
+  ): void {
     const { top, left, bottom, right } = area;
-    const values: Value[] = [];
     const last = Math.min(right, sheet.columns.length - 1);
     for (let col = left; col <= last; col++) {
       const column = sheet.columns[col];
@@ -258,11 +267,12 @@ export class Calculation {
       const end = Math.min(bottom, column.length - 1);
       for (let row = top; row <= end; row++) {
         const value = column[row];
-        if (value != null) values.push(value);
+        if (value != null) visit(value, row, col);
       }
     }
-    this.formulasIn(sheet, area, (formula) => values.push(this.value(formula)));
-    return values;
+    this.formulasIn(sheet, area, (formula) =>
+      visit(this.value(formula), formula.row, formula.col),
+    );
   }
 
   private find(name: string): Sheet | undefined {

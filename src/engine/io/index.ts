@@ -413,7 +413,9 @@ export async function writeXlsx(snapshot: Snapshot): Promise<Uint8Array> {
       });
     });
     for (const [row, col, text] of sheet.formulas) {
-      cell(row, col).value = { formula: text.slice(1), date1904: false };
+      const ast = parse(text.slice(1));
+      const formula = ast ? print(ast, { file: true }) : text.slice(1);
+      cell(row, col).value = { formula, date1904: false };
     }
     sheet.styleIds?.forEach((ids, col) => {
       ids.forEach((id, row) => {
