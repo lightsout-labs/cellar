@@ -23,8 +23,10 @@ Options considered:
 
 The workbook lives on the main thread. `execute` marks dependents dirty and
 returns. `cell()` calculates a dirty cell, and the dirty cells it depends
-on, before answering. The workbook finishes the rest in batches of a few
-milliseconds through a scheduling function that the host supplies.
+on, before answering. Dirty cells that nothing reads stay dirty until they
+are read; finishing them in background batches between frames was planned,
+but no requirement needs it, as every reader of a cell (the grid, the
+status bar, a formula) calculates what it reads.
 
 On-demand calculation follows dependencies with an explicit stack, never
 with recursion. A sheet can hold a chain of 100,000 formulas in which each
@@ -41,7 +43,8 @@ all; recursive evaluation would overflow the call stack.
   stack. The evaluator is harder to write than a recursive one, and the
   same explicit stack detects circular references.
 - Reading the end of a long dirty chain calculates the whole chain in one
-  step, so that read blocks for as long as the chain takes.
+  step, so that read blocks for as long as the chain takes. Scrolling to
+  cells that a change left dirty calculates them then.
 - One formula that is slow by itself, such as a lookup over a very large
   range, still blocks for its own duration.
 - Opening a large file parses it on the main thread, so the interface does

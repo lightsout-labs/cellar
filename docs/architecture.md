@@ -60,8 +60,8 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
-| `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `shift(ast, move)`, `functions` (name, argument hints) | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete. |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)`, `functions` (name, argument hints), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes)`, `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | The mapping between a workbook snapshot and ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
@@ -102,6 +102,33 @@ Decisions that are cheap to reverse, with their reasons:
 - **Window shortcuts are handled on the window**, not by the grid, so that
   Ctrl/Cmd+Z and Ctrl/Cmd+Y work after a click on the ribbon too. During an
   entry they are left to the editor, which undoes its own typing.
+- **Recalculation follows a dependency graph.** Each sheet keeps, for
+  each cell, the formulas that read it alone, and for each column, the
+  formulas that read a range over it (a whole row is in every column). A
+  change marks the formulas that read the changed cells, and theirs in
+  turn, as needing calculation; a formula is calculated when it is read,
+  after the ones it reads, with an explicit stack (ADR 0004). Nothing else
+  is calculated, and `calculations` counts what is, so tests check it
+  (R14). Cells that nothing reads stay uncalculated until read.
+- **Circular references give 0 and are reported**, as in Excel without
+  iteration. The workbook calculates every formula a change sets, and the
+  formulas that were in a circular reference, before it tells its
+  listeners, so `circularReference()` knows every one; the status bar
+  shows a cell of it as `Circular References: B1`, with its sheet when
+  another sheet is shown (R15). A stored workbook calculates all its
+  formulas when it opens.
+- **References to other sheets are by name**, as written. Renaming a
+  sheet rewrites the formulas that name it; a reference to a sheet that
+  no longer exists gives `#REF!` but keeps its text, so undoing the
+  deletion brings it back (Excel writes `#REF!` into the text). Any change
+  to the sheets other than a color or the order finds again what every
+  formula reads.
+- **Formulas are stored as Excel writes them**: function names and
+  references in capitals, sheet names as the sheets have them, without
+  spaces other than the intersection operator.
+- **A range where one value is expected gives the cell in the formula's
+  row or column**, Excel's implicit intersection, and `#VALUE!` when there
+  is none; dynamic arrays are out of scope.
 - **Cells are stored by column**, as arrays of values and of style
   identifiers, with formulas in a sparse map. Ten million populated cells
   (R45) do not fit in memory as one object each.

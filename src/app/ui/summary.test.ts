@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorkbook } from '../../engine/workbook';
 import { pick, single } from '../grid/selection';
-import { summarize } from './summary';
+import { circularCell, summarize } from './summary';
 
 function setup(...inputs: [number, number, string][]) {
   const workbook = createWorkbook();
@@ -78,5 +78,18 @@ describe('the summary of the selection', () => {
       },
     );
     expect(summary(both)).toEqual({ average: '1.5', count: '2', sum: '3' });
+  });
+});
+
+describe('the circular reference shown', () => {
+  it('names a cell of it, with its sheet when another sheet is shown', () => {
+    const workbook = createWorkbook();
+    const sheet = workbook.sheets[0]!.id;
+    expect(circularCell(workbook, sheet)).toBeNull();
+    workbook.execute({ type: 'setCell', sheet, row: 1, col: 2, input: '=C2' });
+    expect(circularCell(workbook, sheet)).toBe('C2');
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({ type: 'setSheet', sheet, name: 'My Data' });
+    expect(circularCell(workbook, other)).toBe("'My Data'!C2");
   });
 });

@@ -312,7 +312,7 @@ Notes:
 
 ## S07: Formulas: operators, references, errors and recalculation
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Formulas support `+ - * / ^`, the comparison operators, `&`, `%`, unary

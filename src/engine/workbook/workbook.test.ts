@@ -75,15 +75,6 @@ describe('workbook', () => {
     });
   });
 
-  it('gives #VALUE! for formulas that read each other, without hanging', () => {
-    const { set, show } = setup();
-    set(0, 0, '=B1+1');
-    set(0, 1, '=A1+1');
-    expect(show(0, 0)).toBe('#VALUE!');
-    set(0, 1, '1');
-    expect(show(0, 0)).toBe('2');
-  });
-
   it('reads a cell that was never set as empty', () => {
     const { workbook, sheet } = setup();
     expect(workbook.cell(sheet, 99_999, 99)).toEqual({
@@ -623,5 +614,181 @@ describe('sheets', () => {
     expect(Workbook.fromSnapshot(stored).toSnapshot()).toEqual(
       workbook.toSnapshot(),
     );
+  });
+});
+
+/** A workbook whose column B holds a chain of `length` formulas from A1. */
+function chain(length: number): Workbook {
+  return Workbook.fromSnapshot({
+    version: 1,
+    name: 'Chain',
+    sheets: [
+      {
+        id: 's',
+        name: 'S',
+        columns: [[1]],
+        formulas: Array.from({ length }, (_, row): [number, number, string] => [
+          row,
+          1,
+          row === 0 ? '=A1+1' : `=B${row}+1`,
+        ]),
+      },
+    ],
+  });
+}
+
+describe('recalculation', () => {
+  it('recalculates the formulas that depend on a cell, directly or indirectly, and no others', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '1');
+    set(0, 1, '=A1*2');
+    set(0, 2, '=SUM(B1,A1:A3)');
+    set(0, 3, '=D2+1');
+    expect(show(0, 2)).toBe('3');
+    expect(show(0, 3)).toBe('1');
+    const before = workbook.calculations;
+    set(2, 0, '10');
+    expect(show(0, 2)).toBe('13');
+    expect(show(0, 1)).toBe('2');
+    expect(show(0, 3)).toBe('1');
+    expect(workbook.calculations - before).toBe(1);
+    set(0, 0, '5');
+    expect(show(0, 2)).toBe('25');
+    expect(workbook.calculations - before).toBe(3);
+    expect(workbook.cell(sheet, 0, 1).value).toBe(10);
+  });
+
+  it('recalculates formulas over whole columns and rows', () => {
+    const { set, show } = setup();
+    set(0, 1, '=SUM(A:A)');
+    set(1, 0, '=SUM(3:3)');
+    set(2, 5, '4');
+    expect(show(0, 1)).toBe('4');
+    set(99_999, 0, '1');
+    expect(show(0, 1)).toBe('5');
+  });
+
+  it('recalculates a chain of 100,000 formulas within a second, calculating each once', () => {
+    const workbook = chain(100_000);
+    expect(workbook.cell('s', 99_999, 1).value).toBe(100_001);
+    const before = workbook.calculations;
+    const start = performance.now();
+    workbook.execute({
+      type: 'setCell',
+      sheet: 's',
+      row: 0,
+      col: 0,
+      input: '2',
+    });
+    expect(workbook.cell('s', 99_999, 1).value).toBe(100_002);
+    expect(performance.now() - start).toBeLessThan(1000);
+    expect(workbook.calculations - before).toBe(100_000);
+  });
+
+  it('calculates only the formulas read after a change, and the ones they need', () => {
+    const workbook = chain(1000);
+    expect(workbook.cell('s', 999, 1).value).toBe(1001);
+    const before = workbook.calculations;
+    workbook.execute({
+      type: 'setCell',
+      sheet: 's',
+      row: 0,
+      col: 0,
+      input: '2',
+    });
+    expect(workbook.cell('s', 9, 1).value).toBe(12);
+    expect(workbook.calculations - before).toBe(10);
+  });
+
+  it('reports a circular reference, gives its cells 0, and recovers when it is broken', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '=B1+1');
+    expect(workbook.circularReference()).toBeNull();
+    set(0, 1, '=A1+1');
+    expect(workbook.circularReference()).toEqual({ sheet, row: 0, col: 1 });
+    expect(show(0, 0)).toBe('0');
+    expect(show(0, 1)).toBe('0');
+    set(5, 5, '7');
+    expect(workbook.circularReference()).toEqual({ sheet, row: 0, col: 1 });
+    set(0, 1, '1');
+    expect(workbook.circularReference()).toBeNull();
+    expect(show(0, 0)).toBe('2');
+    set(3, 3, '=SUM(D1:D10)');
+    expect(workbook.circularReference()).toEqual({ sheet, row: 3, col: 3 });
+    workbook.undo();
+    expect(workbook.circularReference()).toBeNull();
+  });
+
+  it('reports a circular reference in a stored workbook when it opens', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '=A1');
+    const opened = Workbook.fromSnapshot(workbook.toSnapshot());
+    expect(opened.circularReference()).toEqual({ sheet, row: 0, col: 0 });
+  });
+
+  it('reads other sheets, and recalculates when they change', () => {
+    const { workbook, set, show } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({ type: 'setSheet', sheet: other, name: 'Q 1' });
+    set(0, 0, "='Q 1'!A1*2+SUM('q 1'!B:B)");
+    const setOther = (input: string) =>
+      workbook.execute({
+        type: 'setCell',
+        sheet: other,
+        row: 0,
+        col: 0,
+        input,
+      });
+    setOther('3');
+    expect(show(0, 0)).toBe('6');
+    setOther('4');
+    expect(show(0, 0)).toBe('8');
+    set(0, 1, '=Nowhere!A1');
+    expect(show(0, 1)).toBe('#REF!');
+  });
+
+  it('rewrites references to a renamed sheet, and back on undo', () => {
+    const { workbook, sheet, set, show } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 0,
+      col: 0,
+      input: '5',
+    });
+    set(0, 0, '=sheet2!A1+1');
+    workbook.execute({ type: 'setSheet', sheet: other, name: 'Sales Data' });
+    expect(workbook.cell(sheet, 0, 0).formula).toBe("='Sales Data'!A1+1");
+    expect(show(0, 0)).toBe('6');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0).formula).toBe('=Sheet2!A1+1');
+    expect(show(0, 0)).toBe('6');
+  });
+
+  it('gives #REF! for references to a deleted sheet, until the deletion is undone', () => {
+    const { workbook, set, show } = setup();
+    const { sheet: other } = workbook.execute({ type: 'addSheet', index: 1 });
+    workbook.execute({
+      type: 'setCell',
+      sheet: other,
+      row: 0,
+      col: 0,
+      input: '5',
+    });
+    set(0, 0, '=Sheet2!A1+1');
+    set(0, 1, '=A1*2');
+    expect(show(0, 1)).toBe('12');
+    workbook.execute({ type: 'deleteSheet', sheet: other });
+    expect(show(0, 0)).toBe('#REF!');
+    expect(show(0, 1)).toBe('#REF!');
+    workbook.undo();
+    expect(show(0, 1)).toBe('12');
+  });
+
+  it('stores formulas as Excel writes them', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '= sum( a1:b2 ) ');
+    expect(workbook.cell(sheet, 0, 0).formula).toBe('=SUM(A1:B2)');
   });
 });
