@@ -6,7 +6,7 @@ import type {
 } from '../../../engine/workbook';
 import type { Platform, Stored } from '..';
 
-// The IndexedDB database `cellar`. `workbooks` has one record for each
+// The IndexedDB database `gridworks`. `workbooks` has one record for each
 // workbook; `sheets` has one for each sheet, keyed by workbook and sheet;
 // `changes` has the changes made since a workbook was last saved, keyed by
 // workbook and a sequence number.
@@ -39,7 +39,7 @@ let opening: Promise<IDBDatabase> | undefined;
 
 function database(): Promise<IDBDatabase> {
   opening ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open('cellar', 2);
+    const request = indexedDB.open('gridworks', 2);
     request.onupgradeneeded = ({ oldVersion }) => {
       const db = request.result;
       if (oldVersion < 1) {
@@ -162,14 +162,14 @@ export const webPlatform: Platform = {
   preferences: {
     get(name) {
       try {
-        return localStorage.getItem(`cellar.${name}`);
+        return localStorage.getItem(`gridworks.${name}`);
       } catch {
         return null;
       }
     },
     set(name, value) {
       try {
-        localStorage.setItem(`cellar.${name}`, value);
+        localStorage.setItem(`gridworks.${name}`, value);
       } catch {
         // Not remembered.
       }

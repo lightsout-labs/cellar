@@ -52,5 +52,5 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project chromium --grep @smoke
         env:
-          CELLAR_URL: https://lightsout-labs.github.io/cellar/
-          CELLAR_COMMIT: ${{ github.sha }}
+          GRIDWORKS_URL: https://lightsout-labs.github.io/gridworks/
+          GRIDWORKS_COMMIT: ${{ github.sha }}
