@@ -251,3 +251,21 @@ export function power(a: number, b: number): number | ErrorValue {
   if (a === 0 && b < 0) return DIV0;
   return a ** b;
 }
+
+/** A sheet name as a reference writes it: quoted unless it is a plain name. */
+export function quoteSheetName(name: string): string {
+  const plain =
+    /^[A-Za-z_][\w.]*$/.test(name) &&
+    !/^[A-Za-z]{1,3}\d+$/.test(name) &&
+    !/^(TRUE|FALSE)$/i.test(name);
+  return plain ? name : `'${name.replaceAll("'", "''")}'`;
+}
+
+/** The letters of a column, counted from zero: `A`, ..., `Z`, `AA`, ... */
+export function columnName(col: number): string {
+  let name = '';
+  for (let n = col + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  }
+  return name;
+}

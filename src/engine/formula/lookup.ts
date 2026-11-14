@@ -1,11 +1,12 @@
 import { isError, type Value } from '../value';
 import { wildcards } from './conditional';
-import { columnName, quoteSheetName } from './index';
 import {
+  columnName,
   compare,
   error,
   fail,
   NA,
+  quoteSheetName,
   Reference,
   typed,
   VALUE,
@@ -28,12 +29,17 @@ function sought(read: Typed): Value {
   return isError(value) ? fail(value) : value;
 }
 
+/** A whole number argument, `fallback` when not given or left out. */
+const option = (read: Typed, index: number, fallback: number) =>
+  read.args.given(index) ? read.integer(index) : fallback;
+
 /** Whether a reference is one row or one column. */
 const isVector = (ref: Reference) => ref.rows === 1 || ref.cols === 1;
 
 /**
  * The values of one row (`across`) or column of a reference, counted from
- * its first, with empty cells as `null`.
+ * its first, with empty cells as `null`, up to the last that is not empty,
+ * so that a whole column costs only its cells.
  */
 function line(
   args: Args,
@@ -45,11 +51,16 @@ function line(
   const part = across
     ? { ...area, top: area.top + index, bottom: area.top + index }
     : { ...area, left: area.left + index, right: area.left + index };
-  const values = new Array<Value>(across ? ref.cols : ref.rows).fill(null);
+  const found: [at: number, value: Value][] = [];
   const missing = args.cells(new Reference(ref.sheet, part), (value, r, c) => {
-    values[across ? c - area.left : r - area.top] = value;
+    found.push([across ? c - area.left : r - area.top, value]);
   });
-  return missing ? fail(missing) : values;
+  if (missing) return fail(missing);
+  let length = 0;
+  for (const [at] of found) length = Math.max(length, at + 1);
+  const values = new Array<Value>(length).fill(null);
+  for (const [at, value] of found) values[at] = value;
+  return values;
 }
 
 /** The order of a cell against a value, or `null` when it is of another type. */
@@ -179,7 +190,7 @@ export const LOOKUP_FUNCTIONS: Record<string, Spec> = {
   ADDRESS: typed(2, 5, (read) => {
     const row = read.integer(0);
     const col = read.integer(1);
-    const absolute = read.integer(2, 1);
+    const absolute = option(read, 2, 1);
     const a1 = read.boolean(3, true);
     if (row < 1 || col < 1 || row > 1_048_576 || col > 16_384) return VALUE;
     if (absolute < 1 || absolute > 4) return VALUE;
@@ -273,7 +284,7 @@ export const LOOKUP_FUNCTIONS: Record<string, Spec> = {
         return VALUE;
       }
       const cells = line(read.args, keys, 0, across);
-      const at = nearest(value, cells, read.integer(4, 0), read.integer(5, 1));
+      const at = nearest(value, cells, option(read, 4, 0), option(read, 5, 1));
       if (at >= 0) return part(results, at, across);
       return read.args.given(3) ? read.args.result(3) : NA;
     },
@@ -287,7 +298,7 @@ export const LOOKUP_FUNCTIONS: Record<string, Spec> = {
       const ref = reference(read, 1);
       if (!isVector(ref)) return VALUE;
       const cells = line(read.args, ref, 0, ref.rows === 1);
-      const at = nearest(value, cells, read.integer(2, 0), read.integer(3, 1));
+      const at = nearest(value, cells, option(read, 2, 0), option(read, 3, 1));
       return at < 0 ? NA : at + 1;
     },
     true,

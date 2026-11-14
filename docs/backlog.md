@@ -451,6 +451,30 @@ Acceptance criteria:
 - At least 150 functions are implemented in total, and a test counts them.
   (R12)
 
+Notes:
+- Four more families: `text.ts`, `date.ts`, `lookup.ts`, `information.ts`;
+  191 functions in all. `functions` in `engine/formula` lists their names,
+  sorted; S11 can add argument hints to it.
+- Most new specs use `typed(min, max, fn)` from `values.ts`: `read.text`,
+  `number`, `integer` and `boolean` throw the error an argument gives,
+  and `fail(error)` gives one. The fallback of a read applies only past
+  the end of the arguments; a left-out argument (`,,`) reads as 0, as
+  `VLOOKUP(…,)` needs. Functions whose left-out arguments take their
+  default (`XLOOKUP`, `XMATCH`, `ADDRESS`, the `.INTL` weekend) check
+  `args.given`.
+- `Args` now has `row` and `col`, the formula's place, for `ROW()` and
+  `COLUMN()`. `parseDate` in `engine/format` reads text as a date or time.
+- `INDEX`, `CHOOSE` and `XLOOKUP` give references; `VLOOKUP`, `HLOOKUP`
+  and `LOOKUP` give values, 0 for an empty cell. Approximate lookups
+  scan; on sorted data they find what Excel's binary search finds.
+- `TODAY` and `NOW` are not volatile: they read the clock when their
+  formula is calculated. `RAND`, `OFFSET` and `INDIRECT` are not built
+  (see the architecture). Tests of files now use `OFFSET` as the
+  function Gridworks lacks.
+- `CHAR` and `CODE` use Windows-1252. `columnName` and `quoteSheetName`
+  moved to `values.ts`, re-exported by `index.ts`, so that no family
+  imports `index.ts`.
+
 ## S11: Help while typing a formula
 
 Status: Todo

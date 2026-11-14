@@ -63,7 +63,7 @@ export function aggregate(fn: (values: number[]) => Outcome): Spec {
 export const sum = (values: number[]) =>
   values.reduce((total, n) => total + n, 0);
 
-export type Rounding = 'near' | 'up' | 'down';
+type Rounding = 'near' | 'up' | 'down';
 
 /**
  * A number rounded to some digits after the point (before it when

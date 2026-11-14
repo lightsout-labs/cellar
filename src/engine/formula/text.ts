@@ -1,6 +1,6 @@
 import { formatValue } from '../format';
 import { isError, type ErrorValue, type Value } from '../value';
-import { wildcards } from './conditional';
+import { wildcardsAt } from './conditional';
 import { grid, round } from './math';
 import {
   fail,
@@ -77,15 +77,35 @@ function formatted(read: Typed, code: (decimals: string) => string): string {
 
 const LETTER = /\p{L}/u;
 
+/**
+ * The characters of codes 128 to 159 in Windows-1252, the character set of
+ * `CHAR` and `CODE` in Excel; the other codes up to 255 are Unicode's.
+ */
+const WINDOWS_1252 = '€\x81‚ƒ„…†‡ˆ‰Š‹Œ\x8dŽ\x8f\x90‘’“”•–—˜™š›œ\x9džŸ';
+
+/** The character of a code in Windows-1252. */
+const character = (code: number) =>
+  code >= 128 && code < 160
+    ? WINDOWS_1252[code - 128]!
+    : String.fromCharCode(code);
+
+/** The code of a character in Windows-1252: 63, a `?`, if it has none. */
+function codeOf(char: string): number {
+  const code = char.charCodeAt(0);
+  if (code < 128 || (code >= 160 && code < 256)) return code;
+  const at = WINDOWS_1252.indexOf(char);
+  return at >= 0 ? at + 128 : 63;
+}
+
 export const TEXT_FUNCTIONS: Record<string, Spec> = {
   CHAR: typed(1, 1, (read) => {
     const code = read.integer(0);
-    return code < 1 || code > 255 ? VALUE : String.fromCharCode(code);
+    return code < 1 || code > 255 ? VALUE : character(code);
   }),
   CLEAN: unary((text) =>
     [...text].filter((char) => char.charCodeAt(0) >= 32).join(''),
   ),
-  CODE: unary((text) => (text === '' ? VALUE : text.charCodeAt(0))),
+  CODE: unary((text) => (text === '' ? VALUE : codeOf(text[0]!))),
   CONCAT: {
     min: 1,
     max: 253,
@@ -179,8 +199,8 @@ export const TEXT_FUNCTIONS: Record<string, Spec> = {
     if (!/[*?~]/.test(find)) {
       return locate(find, within, start, (at) => within.startsWith(find, at));
     }
-    const matches = wildcards(`${find}*`);
-    return locate('', within, start, (at) => matches(within.slice(at)));
+    const matches = wildcardsAt(find);
+    return locate('', within, start, (at) => matches(within, at));
   }),
   SUBSTITUTE: typed(3, 4, (read) => {
     const [text, old, replacement] = [read.text(0), read.text(1), read.text(2)];

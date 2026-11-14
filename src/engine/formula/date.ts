@@ -109,7 +109,7 @@ function isoWeek(day: number): number {
  */
 function weekend(args: Args, intl: boolean): boolean[] | ErrorValue {
   const days = new Array<boolean>(7).fill(false);
-  const value = intl && args.length > 2 ? args.value(2) : 1;
+  const value = intl && args.given(2) ? args.value(2) : 1;
   if (isError(value)) return value;
   if (typeof value === 'string') {
     if (!/^[01]{7}$/.test(value) || value === '1111111') return VALUE;
