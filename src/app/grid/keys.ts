@@ -18,7 +18,9 @@ export type KeyAction =
   /** Starts an entry that replaces the contents of the active cell. */
   | { type: 'type'; text: string }
   /** Empties the selected cells. */
-  | { type: 'clear' };
+  | { type: 'clear' }
+  /** Cycles the reference at the caret between absolute and relative. */
+  | { type: 'cycleReference' };
 
 /**
  * What a key does, as in Excel, with no entry or during one in a mode, or
@@ -42,6 +44,7 @@ export function keyAction(
   if (plain && key === 'Tab') return step(0, back);
   if (key === 'Escape') return mode ? { type: 'cancel' } : null;
   if (key === 'F2') return mode === 'edit' ? null : { type: 'edit' };
+  if (key === 'F4') return mode ? { type: 'cycleReference' } : null;
   if (mode === 'edit') return null;
   if (mode === 'enter') {
     if (!key.startsWith('Arrow')) return null;

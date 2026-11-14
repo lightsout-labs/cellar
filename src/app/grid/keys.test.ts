@@ -42,6 +42,12 @@ describe('keyAction', () => {
     expect(action(press('Escape'), null)).toBeNull();
   });
 
+  it('cycles the reference at the caret of an entry with F4', () => {
+    expect(action(press('F4'), 'enter')).toEqual({ type: 'cycleReference' });
+    expect(action(press('F4'), 'edit')).toEqual({ type: 'cycleReference' });
+    expect(action(press('F4'), null)).toBeNull();
+  });
+
   it('starts editing, or switches an entry to Edit mode, with F2', () => {
     expect(action(press('F2'), null)).toEqual({ type: 'edit' });
     expect(action(press('F2'), 'enter')).toEqual({ type: 'edit' });

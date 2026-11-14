@@ -279,6 +279,7 @@ test.describe('the controls', () => {
       [
         ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
+        ['tab', 'Formulas', 'Functions to use in formulas'],
         ['tab', 'View', 'Appearance and language'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
         ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
@@ -298,6 +299,15 @@ test.describe('the controls', () => {
       ],
       7,
     );
+    await page.getByRole('tab', { name: 'Formulas' }).click();
+    await clickCell(page, 5, 5);
+    await check(
+      [
+        ['button', 'Insert function', 'Choose a function to insert'],
+        ...statusBar,
+      ],
+      4,
+    );
     await page.getByRole('tab', { name: 'File' }).click();
     await clickCell(page, 5, 5);
     await check(
@@ -316,7 +326,7 @@ test.describe('the controls', () => {
     await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
-    ).toHaveCount(3);
+    ).toHaveCount(4);
   });
 
   test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({

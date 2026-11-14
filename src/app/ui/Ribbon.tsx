@@ -2,6 +2,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import {
   Download,
   FolderOpen,
+  SquareFunction,
   Moon,
   Redo2,
   Sun,
@@ -71,6 +72,11 @@ export function Ribbon({
               {t('tab.home')}
             </Tabs.Trigger>
           </Tooltip>
+          <Tooltip text={t('tab.formulas.tooltip')}>
+            <Tabs.Trigger className={styles.ribbonTab} value="formulas">
+              {t('tab.formulas')}
+            </Tabs.Trigger>
+          </Tooltip>
           <Tooltip text={t('tab.view.tooltip')}>
             <Tabs.Trigger className={styles.ribbonTab} value="view">
               {t('tab.view')}
@@ -101,6 +107,19 @@ export function Ribbon({
       <Tabs.Content className={styles.ribbonPanel} value="home">
         <Group label={t('undo')}>
           <History workbook={workbook} view={view} />
+        </Group>
+      </Tabs.Content>
+      <Tabs.Content className={styles.ribbonPanel} value="formulas">
+        <Group label={t('formulas.library')}>
+          <Command
+            icon={SquareFunction}
+            label={t('formulas.insert')}
+            tooltip={t('formulas.insert.tooltip')}
+            disabled={false}
+            onRun={() => view.insertFunction()}
+            keepsEntry
+            labeled
+          />
         </Group>
       </Tabs.Content>
       <Tabs.Content className={styles.ribbonPanel} value="view">
@@ -182,7 +201,11 @@ function History({ workbook, view }: { workbook: Workbook; view: View }) {
   );
 }
 
-/** A button that runs a command, shown by its icon, and its label if `labeled`. */
+/**
+ * A button that runs a command, shown by its icon, and its label if
+ * `labeled`. One that `keepsEntry` works on the entry being typed, which
+ * a click on it leaves the keyboard.
+ */
 function Command({
   icon: Icon,
   label,
@@ -190,6 +213,7 @@ function Command({
   disabled,
   onRun,
   labeled = false,
+  keepsEntry = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -197,6 +221,7 @@ function Command({
   disabled: boolean;
   onRun: () => void;
   labeled?: boolean;
+  keepsEntry?: boolean;
 }) {
   return (
     <Tooltip text={tooltip}>
@@ -205,6 +230,7 @@ function Command({
         className={styles.button}
         aria-label={labeled ? undefined : label}
         disabled={disabled}
+        onMouseDown={keepsEntry ? (event) => event.preventDefault() : undefined}
         onClick={onRun}
       >
         <Icon size={ICON_SIZE} aria-hidden />

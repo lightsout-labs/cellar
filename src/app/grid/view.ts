@@ -1,4 +1,18 @@
-import type { Change, Command, Workbook } from '../../engine/workbook';
+import {
+  cellName,
+  quoteSheetName,
+  type Change,
+  type Command,
+  type Range,
+  type Workbook,
+} from '../../engine/workbook';
+import {
+  complete,
+  cycleReference,
+  insertReference,
+  pickable,
+  type Edit,
+} from './formula';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import { covering, single, type Selection } from './selection';
@@ -20,6 +34,18 @@ export interface Entry {
   readonly mode: EntryMode;
   /** Where it is typed: in the cell or in the formula bar. */
   readonly place: 'cell' | 'formulaBar';
+  /**
+   * The sheet of the cell it goes to, the active one there. Another sheet
+   * can be shown while a formula is typed, to pick references on it.
+   */
+  readonly sheet: string;
+  /** Where the caret is in the text. */
+  readonly caret: number;
+  /**
+   * Whether the list of every function is open, as Insert function opens
+   * it, until the text or the caret changes.
+   */
+  readonly allFunctions: boolean;
 }
 
 export interface ViewState {
@@ -74,8 +100,11 @@ export class View {
 
   /** Changes the selection, after committing an entry that is waiting. */
   select(selection: Selection): void {
+    // A formula typed on another sheet goes to its own cell, and the
+    // selection is that of the sheet shown.
+    const { sheet } = this.current;
     this.commit();
-    this.change({ selection, endMode: false });
+    this.change({ sheet, selection, endMode: false });
   }
 
   /** Moves the selection by the keyboard, after committing a waiting entry. */
@@ -96,14 +125,85 @@ export class View {
 
   /**
    * Starts an entry in Enter mode that replaces the contents of the active
-   * cell, or replaces the text of the entry there.
+   * cell, or replaces the text of the entry there; the caret is at the end
+   * unless given.
    */
-  type(text: string): void {
-    const { entry } = this.current;
+  type(text: string, caret = text.length): void {
+    const { entry, sheet } = this.current;
     this.change({
       entry: entry
-        ? { ...entry, text }
-        : { text, mode: 'enter', place: 'cell' },
+        ? { ...entry, text, caret, allFunctions: false }
+        : {
+            text,
+            mode: 'enter',
+            place: 'cell',
+            sheet,
+            caret,
+            allFunctions: false,
+          },
+    });
+  }
+
+  /** Moves the caret of the entry. */
+  moveCaret(caret: number): void {
+    const { entry } = this.current;
+    if (entry && entry.caret !== caret) {
+      this.change({ entry: { ...entry, caret, allFunctions: false } });
+    }
+  }
+
+  /**
+   * Whether a click on the grid picks a reference for the formula being
+   * typed rather than selecting: where a reference can go at the caret.
+   */
+  get canPick(): boolean {
+    const { entry } = this.current;
+    return entry !== null && pickable(entry.text, entry.caret);
+  }
+
+  /**
+   * Puts a reference to a range of the shown sheet at the caret of the
+   * entry, in place of the one picked just before.
+   */
+  pick({ top, left, bottom, right }: Range): void {
+    const { entry, sheet } = this.current;
+    if (!entry) return;
+    const name = this.workbook.sheets.find((each) => each.id === sheet)!.name;
+    const prefix = sheet === entry.sheet ? '' : `${quoteSheetName(name)}!`;
+    const end =
+      top === bottom && left === right ? '' : `:${cellName(bottom, right)}`;
+    const reference = prefix + cellName(top, left) + end;
+    this.edited(insertReference(entry.text, entry.caret, reference));
+  }
+
+  /** Cycles the reference at the caret between absolute and relative, as F4. */
+  cycleReference(): void {
+    const { entry } = this.current;
+    const edit = entry && cycleReference(entry.text, entry.caret);
+    if (edit) this.edited(edit);
+  }
+
+  /** Puts a function in place of the start of its name typed at the caret. */
+  complete(name: string): void {
+    const { entry } = this.current;
+    if (entry) this.edited(complete(entry.text, entry.caret, name));
+  }
+
+  /**
+   * Opens the list of every function at the caret of a formula, starting
+   * one in the formula bar in place of anything else.
+   */
+  insertFunction(): void {
+    if (!this.current.entry) this.edit('formulaBar');
+    const entry = this.current.entry!;
+    const formula = entry.text.startsWith('=');
+    this.change({
+      entry: {
+        ...entry,
+        text: formula ? entry.text : '=',
+        caret: formula ? entry.caret : 1,
+        allFunctions: true,
+      },
     });
   }
 
@@ -115,21 +215,42 @@ export class View {
     const { sheet, selection, entry } = this.current;
     const { row, col } = selection.active;
     const text = entry?.text ?? this.workbook.cell(sheet, row, col).input;
-    this.change({ entry: { text, mode: 'edit', place } });
+    this.change({
+      entry: {
+        text,
+        mode: 'edit',
+        place,
+        sheet: entry?.sheet ?? sheet,
+        caret: entry?.caret ?? text.length,
+        allFunctions: entry?.allFunctions ?? false,
+      },
+    });
   }
 
-  /** Writes the entry to the active cell. Does nothing without an entry. */
+  /**
+   * Writes the entry to its cell, and shows that cell's sheet again. Does
+   * nothing without an entry.
+   */
   commit(): void {
-    const { sheet, selection, entry } = this.current;
+    const { selection, entry } = this.current;
     if (entry === null) return;
-    this.change({ entry: null });
+    const { sheet, text: input } = entry;
+    this.change({ entry: null, sheet });
     const { row, col } = selection.active;
-    const input = entry.text;
     this.workbook.execute({ type: 'setCell', sheet, row, col, input });
   }
 
-  /** Shows another sheet, at A1, after committing a waiting entry. */
+  /**
+   * Shows another sheet, at A1, after committing a waiting entry; or
+   * keeps a formula that can take a reference going in the formula bar,
+   * to pick one on that sheet.
+   */
   showSheet(sheet: string): void {
+    const { entry } = this.current;
+    if (entry && this.canPick) {
+      this.change({ sheet, entry: { ...entry, place: 'formulaBar' } });
+      return;
+    }
     this.commit();
     this.change({ sheet, selection: single(START), endMode: false });
   }
@@ -163,9 +284,10 @@ export class View {
     this.reverse(() => this.workbook.redo());
   }
 
-  /** Abandons the entry. */
+  /** Abandons the entry, and shows its cell's sheet again. */
   cancel(): void {
-    this.change({ entry: null });
+    const { entry, sheet } = this.current;
+    this.change({ entry: null, sheet: entry?.sheet ?? sheet });
   }
 
   /** Sets the zoom, kept between 50% and 200% and in whole percents. */
@@ -174,6 +296,11 @@ export class View {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
     );
     this.change({ zoom: percent / 100 });
+  }
+
+  private edited({ text, caret }: Edit): void {
+    const entry = { ...this.current.entry!, text, caret, allFunctions: false };
+    this.change({ entry });
   }
 
   private reverse(run: () => Change | null): void {

@@ -478,7 +478,8 @@ Notes:
 
 ## S11: Help while typing a formula
 
-Status: Todo
+Status: Done
+PR: #15
 
 Acceptance criteria:
 - Typing a function name after `=` shows a list of matching functions;
@@ -494,6 +495,28 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- `Entry` now holds `sheet` (of the cell it goes to), `caret` and
+  `allFunctions`; editors report the caret with `view.moveCaret`, and
+  `view.type(text, caret)`. `View.commit` and `cancel` show the entry's
+  sheet again; `View.select` keeps the shown sheet.
+- `src/app/grid/formula.ts` is the pure help (completion, hint, colors,
+  `pickable`, `insertReference`, `cycleReference`) over the engine's
+  `tokenize`; `<FormulaEditor>` is the one editor of the cell and the
+  formula bar. A formula's text is drawn by a mirror over a transparent
+  input; end-to-end tests read references as `[data-place="cell"]
+  [data-reference]`.
+- The argument names are in `src/engine/formula/signatures.ts`; a new
+  function needs one there, which a test checks against the parser.
+- The ribbon has a Formulas tab (Insert function), between Home and View.
+  A ribbon command that works on the entry passes `keepsEntry`, which
+  keeps the keyboard in the editor on mousedown.
+- Insert function opens the autocomplete list with every function rather
+  than a dropdown menu: installing `@radix-ui/react-dropdown-menu` was not
+  permitted in this session.
+- Home does not move the caret of an input on macOS in Firefox and WebKit;
+  end-to-end tests move it with F2 and the arrows.
 
 ## S12: Cut, copy and paste inside Gridworks
 

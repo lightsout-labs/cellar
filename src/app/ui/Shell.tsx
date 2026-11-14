@@ -1,7 +1,8 @@
 import { Minus, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
 import { cellName, type Workbook } from '../../engine/workbook';
-import { EDITOR, MAC, staysInEntry } from '../grid/Grid';
+import { FormulaEditor } from '../grid/FormulaEditor';
+import { MAC } from '../grid/Grid';
 import { keyAction } from '../grid/keys';
 import { ZOOM_MAX, ZOOM_MIN, type View } from '../grid/view';
 import { Tooltip, useTranslation } from './controls';
@@ -24,7 +25,7 @@ export function FormulaBar({
   view: View;
 }) {
   const t = useTranslation();
-  const { sheet, selection, entry } = useSyncExternalStore(
+  const { sheet, selection } = useSyncExternalStore(
     view.subscribe,
     () => view.state,
   );
@@ -39,21 +40,16 @@ export function FormulaBar({
         {cellName(active.row, active.col)}
       </div>
       <Tooltip text={t('formulaBar.tooltip')}>
-        <input
-          className={styles.formulaBar}
-          aria-label={t('formulaBar')}
-          {...{ [EDITOR]: '' }}
-          value={entry?.text ?? contents}
-          onFocus={() => {
-            if (view.state.entry?.place !== 'formulaBar')
-              view.edit('formulaBar');
-          }}
-          onChange={(event) => view.type(event.target.value)}
-          onBlur={(event) => {
-            if (!staysInEntry(event)) view.commit();
-          }}
+        <FormulaEditor
+          view={view}
+          place="formulaBar"
+          contents={contents}
+          label={t('formulaBar')}
+          className={styles.formulaBox}
+          inputClassName={styles.formulaBar}
+          mirrorClassName={styles.formulaMirror}
           onKeyDown={(event) => {
-            // Only Enter, Tab and Escape act here: it is always Edit mode.
+            // Only Enter, Tab, Escape and F4 act here: it is always Edit mode.
             const action = keyAction(
               {
                 key: event.key,
@@ -66,6 +62,7 @@ export function FormulaBar({
             );
             if (action?.type === 'navigate') view.navigate(action.navigation);
             else if (action?.type === 'cancel') view.cancel();
+            else if (action?.type === 'cycleReference') view.cycleReference();
             else return;
             event.preventDefault();
           }}
