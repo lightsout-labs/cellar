@@ -40,5 +40,7 @@ workbook if it was never saved, and executes the recorded changes on it.
   later change to a command must still read the commands stored before it.
 - Replaying a command must give the same workbook as executing it did, so
   commands depend only on the workbook and their own fields, never on the
-  time or the view.
+  time or the view. A date typed without a year is the one exception the
+  input allows; the workbook adds the year it chose to the command its
+  listeners receive, and that is the command recorded.
 - Undo (S05) is executed as commands too, and is recorded the same way.

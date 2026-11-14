@@ -17,6 +17,11 @@ export type Command =
        * boolean, text, or a formula starting with `=`.
        */
       readonly input: string;
+      /**
+       * The year of a date typed without one. When absent, the current
+       * year, which the workbook adds to the command its listeners get.
+       */
+      readonly year?: number;
     }
   | {
       /** Empties the cells of ranges, keeping their formats. */
@@ -201,14 +206,17 @@ export class Workbook {
 
   execute(command: Command): void {
     const sheet = this.sheet(command.sheet);
+    let executed = command;
     if (command.type === 'setCell') {
-      this.setCell(sheet, command.row, command.col, command.input);
+      const year = this.setCell(sheet, command);
+      // Listeners that record the command replay it with the same date.
+      if (year !== undefined) executed = { ...command, year };
     } else {
       for (const range of command.ranges) clear(sheet, range);
     }
     // Any formula may read the changed cells, so every result is stale.
     for (const each of this.sheetList) each.results.clear();
-    for (const listener of this.listeners) listener(command);
+    for (const listener of this.listeners) listener(executed);
   }
 
   cell(sheetId: string, row: number, col: number): Cell {
@@ -288,22 +296,28 @@ export class Workbook {
     return () => this.listeners.delete(listener);
   }
 
-  private setCell(sheet: Sheet, row: number, col: number, input: string) {
+  /** Sets a cell, and gives the year it gave a date typed without one. */
+  private setCell(
+    sheet: Sheet,
+    command: Extract<Command, { type: 'setCell' }>,
+  ): number | undefined {
+    const { row, col, input } = command;
     const ast = input.startsWith('=') ? parse(input.slice(1)) : null;
     const column = (sheet.columns[col] ??= []);
     if (ast) {
       sheet.formulas.set(key(row, col), { row, col, text: input, ast });
       column[row] = null;
-      return;
+      return undefined;
     }
     sheet.formulas.delete(key(row, col));
-    const { value, format } = parseInput(input);
+    const { value, format, year } = parseInput(input, command.year);
     column[row] = value;
-    if (format === undefined) return;
+    if (format === undefined) return year;
     // The way the value was typed sets the cell's format, as in Excel.
     const ids = (sheet.styleIds[col] ??= []);
     const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
     ids[row] = this.styleId(style);
+    return year;
   }
 
   /** The index of a style in the table, added if it is new. */

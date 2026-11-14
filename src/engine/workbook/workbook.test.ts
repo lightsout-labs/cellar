@@ -295,4 +295,30 @@ describe('workbook', () => {
     set(2, 0, '0.5');
     expect(show(2, 0)).toBe('50%');
   });
+
+  it('tells listeners the year it gave a date typed without one, which a replay keeps', () => {
+    const { workbook, sheet } = setup();
+    const listener = vi.fn();
+    workbook.subscribe(listener);
+    workbook.execute({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '2-Jan',
+    });
+    const year = new Date().getFullYear();
+    expect(listener).toHaveBeenCalledWith({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '2-Jan',
+      year,
+    });
+
+    const replay = createWorkbook();
+    replay.execute({ ...listener.mock.calls[0]![0], year: 2030 });
+    expect(replay.cell(sheet, 0, 0).input).toBe('1/2/2030');
+  });
 });

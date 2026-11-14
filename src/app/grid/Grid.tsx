@@ -407,6 +407,20 @@ function draw(
       context.beginPath();
       context.rect(start + 1, box.y + 1, end - start - 1, box.height - 1);
       context.clip();
+      // The grid lines inside text that runs over are hidden, as in Excel.
+      for (let each = from + 1; each <= to; each++) {
+        const x = Math.round(rect({ row, col: each }).x);
+        const selected = (c: number) =>
+          ranges.some(
+            (r) =>
+              row >= r.top && row <= r.bottom && c >= r.left && c <= r.right,
+          );
+        context.fillStyle = color(
+          selected(each - 1) && selected(each) ? '--selection' : '--background',
+        );
+        context.fillRect(x, box.y + 1, 1, box.height - 1);
+      }
+      context.fillStyle = color('--text');
       context.textAlign = align;
       const x =
         align === 'left'

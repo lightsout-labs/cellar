@@ -28,6 +28,20 @@ describe('parseInput', () => {
     if (text !== '2-Jan') expect(parsed.value).toBeCloseTo(value, 10);
   });
 
+  it('gives a date typed without a year the year it is told, and says which', () => {
+    expect(parseInput('2-Jan', 2030)).toEqual({
+      value: 47485, // 1/2/2030
+      format: 'd-mmm',
+      year: 2030,
+    });
+    expect(parseInput('2-Jan').year).toBe(new Date().getFullYear());
+    expect(parseInput('1/2/2026', 2030)).toEqual({
+      value: 46024,
+      format: 'm/d/yyyy',
+    });
+    expect(parseInput('13:45', 2030).year).toBeUndefined();
+  });
+
   it.each([
     ['TRUE', true],
     ['false', false],

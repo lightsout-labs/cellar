@@ -1,4 +1,6 @@
 import {
+  dateFromSerial,
+  dateToSerial,
   format,
   getFormatDateInfo,
   getFormatFromId,
@@ -16,22 +18,36 @@ export interface Input {
   readonly value: number | string | boolean | null;
   /** The format code that the way it was typed implies, as `0%` for `12%`. */
   readonly format?: string;
+  /** The year given to a date typed without one. */
+  readonly year?: number;
 }
 
 /**
  * Recognizes a typed entry as Excel does: a number, a date, a time, a
  * percentage or a boolean, with the format it implies; an empty cell when
  * nothing was typed; and otherwise the text itself. Formulas are not
- * recognized here.
+ * recognized here. A date typed without a year is in `year`, by default
+ * the current one.
  */
-export function parseInput(text: string): Input {
+export function parseInput(
+  text: string,
+  year: number = new Date().getFullYear(),
+): Input {
   if (text === '') return { value: null };
   const parsed = parseValue(text);
   if (!parsed) return { value: text };
   if (typeof parsed.value === 'boolean') return { value: parsed.value };
-  return parsed.formatId === undefined
-    ? { value: parsed.value }
-    : { value: parsed.value, format: getFormatFromId(parsed.formatId) };
+  if (parsed.formatId === undefined) return { value: parsed.value };
+  const code = getFormatFromId(parsed.formatId);
+  const info = getFormatDateInfo(code);
+  if (!isDateFormat(code) || info.type === 'time' || info.year) {
+    return { value: parsed.value, format: code };
+  }
+  // The parser gave it the year of the clock; it gets the one asked for.
+  const [, month, day] = dateFromSerial(parsed.value);
+  const time = parsed.value - Math.floor(parsed.value);
+  const value = dateToSerial([year, month!, day!])! + time;
+  return { value, format: code, year };
 }
 
 /** The text that a cell shows for a value, in a format code. */
