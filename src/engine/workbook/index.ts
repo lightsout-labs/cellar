@@ -257,7 +257,17 @@ export class Workbook {
         const column = sheet.columns[col];
         if (!column) continue;
         const end = Math.min(bottom, column.length - 1);
-        for (let row = top; row <= end; row++) add(column[row] ?? null);
+        // The hot loop of a whole sheet, so `add` is written out here.
+        for (let row = top; row <= end; row++) {
+          const value = column[row];
+          if (typeof value === 'number') {
+            count++;
+            numbers++;
+            sum += value;
+          } else if (value != null) {
+            count++;
+          }
+        }
       }
       for (const { row, col } of sheet.formulas.values()) {
         if (row >= top && row <= bottom && col >= left && col <= right) {
