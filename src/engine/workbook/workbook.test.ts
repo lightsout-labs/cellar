@@ -136,6 +136,19 @@ describe('workbook', () => {
     expect(() => Workbook.fromSnapshot(snapshot as never)).toThrow(/version/);
   });
 
+  it('refuses to restore a formula that does not parse', () => {
+    const { workbook, sheet } = setup();
+    const cell = { top: 0, left: 0, bottom: 0, right: 0 };
+    expect(() =>
+      workbook.execute({
+        type: 'restore',
+        sheet,
+        ranges: [cell],
+        cells: [{ row: 0, col: 0, value: null, formula: '=1+' }],
+      }),
+    ).toThrow(/=1\+/);
+  });
+
   it('refuses a command for a sheet that does not exist', () => {
     const { workbook } = setup();
     expect(() =>
@@ -320,5 +333,149 @@ describe('workbook', () => {
     const replay = createWorkbook();
     replay.execute({ ...listener.mock.calls[0]![0], year: 2030 });
     expect(replay.cell(sheet, 0, 0).input).toBe('1/2/2030');
+  });
+});
+
+describe('undo and redo', () => {
+  it('undoes a change to a value, a formula or a format, and redo it', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '12%');
+    set(0, 0, '=1+1');
+    set(0, 0, '1/2/2026');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: 2,
+      formula: '=1+1',
+      display: '200%',
+    });
+    workbook.undo();
+    expect(show(0, 0)).toBe('12%');
+    workbook.undo();
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      value: null,
+      formula: null,
+    });
+    set(0, 0, '0.5');
+    expect(show(0, 0)).toBe('0.5'); // The format is undone too.
+    workbook.undo();
+    workbook.redo();
+    workbook.redo(); // Nothing more to redo after a new change.
+    expect(show(0, 0)).toBe('0.5');
+  });
+
+  it('undoes clearing ranges, and redoes it', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '1');
+    set(1, 1, '=A1+1');
+    set(3, 0, '12%');
+    set(5, 5, 'outside');
+    workbook.execute({
+      type: 'clear',
+      sheet,
+      ranges: [
+        { top: 0, left: 0, bottom: 1, right: 1 },
+        { top: 3, left: 0, bottom: SHEET_ROWS - 1, right: 0 },
+      ],
+    });
+    workbook.undo();
+    expect(show(0, 0)).toBe('1');
+    expect(workbook.cell(sheet, 1, 1)).toMatchObject({
+      formula: '=A1+1',
+      display: '2',
+    });
+    expect(show(3, 0)).toBe('12%');
+    workbook.redo();
+    expect(workbook.extent(sheet)).toEqual({ rows: 6, cols: 6 });
+    expect(workbook.cell(sheet, 1, 1).formula).toBeNull();
+  });
+
+  it('gives the cells that each undo and redo changed', () => {
+    const { workbook, sheet, set } = setup();
+    expect(workbook.undo()).toBeNull();
+    set(2, 3, 'x');
+    const ranges = [
+      { top: 0, left: 0, bottom: 1, right: 1 },
+      { top: 4, left: 4, bottom: 4, right: 4 },
+    ];
+    workbook.execute({ type: 'clear', sheet, ranges });
+    expect(workbook.undo()).toEqual({ sheet, ranges });
+    const cell = { sheet, ranges: [{ top: 2, left: 3, bottom: 2, right: 3 }] };
+    expect(workbook.undo()).toEqual(cell);
+    expect(workbook.redo()).toEqual(cell);
+    expect(workbook.redo()).toEqual({ sheet, ranges });
+    expect(workbook.redo()).toBeNull();
+  });
+
+  it('undoes the last 100 changes in order, and no more', () => {
+    const { workbook, sheet, set, show } = setup();
+    for (let step = 1; step <= 101; step++) set(0, 0, String(step));
+    for (let step = 100; step >= 1; step--) {
+      expect(workbook.canUndo).toBe(true);
+      workbook.undo();
+      expect(show(0, 0)).toBe(String(step));
+    }
+    expect(workbook.canUndo).toBe(false);
+    expect(workbook.undo()).toBeNull();
+    expect(workbook.cell(sheet, 0, 0).value).toBe(1);
+  });
+
+  it('tells whether there is something to undo and to redo, already to its listeners', () => {
+    const { workbook, set } = setup();
+    const seen: boolean[][] = [];
+    workbook.subscribe(() => seen.push([workbook.canUndo, workbook.canRedo]));
+    expect([workbook.canUndo, workbook.canRedo]).toEqual([false, false]);
+    set(0, 0, '1');
+    workbook.undo();
+    workbook.redo();
+    expect(seen).toEqual([
+      [true, false],
+      [false, true],
+      [true, false],
+    ]);
+  });
+
+  it('discards what could be redone when a new change follows an undo', () => {
+    const { workbook, set, show } = setup();
+    set(0, 0, '1');
+    set(0, 0, '2');
+    workbook.undo();
+    set(1, 0, '3');
+    expect(workbook.canRedo).toBe(false);
+    expect(workbook.redo()).toBeNull();
+    expect(show(0, 0)).toBe('1');
+  });
+
+  it('tells listeners of each undo and redo as a command that replays it', () => {
+    const { workbook, sheet, set } = setup();
+    const replay = createWorkbook();
+    workbook.subscribe((command) => replay.execute(command));
+    set(0, 0, '1/2/2026');
+    set(1, 0, '=A1+1');
+    workbook.execute({
+      type: 'clear',
+      sheet,
+      ranges: [{ top: 0, left: 0, bottom: 0, right: 0 }],
+    });
+    workbook.undo();
+    workbook.undo();
+    workbook.redo();
+    workbook.undo();
+    workbook.undo();
+    workbook.redo();
+    const stored = JSON.parse(JSON.stringify(replay.toSnapshot()));
+    expect(Workbook.fromSnapshot(stored).toSnapshot()).toEqual(
+      workbook.toSnapshot(),
+    );
+    expect(replay.cell(sheet, 0, 0).display).toBe('1/2/2026');
+  });
+
+  it('opens a stored workbook with its recorded changes, which cannot be undone', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '1');
+    const opened = Workbook.fromSnapshot(workbook.toSnapshot(), [
+      { type: 'setCell', sheet, row: 1, col: 0, input: '=A1+1' },
+    ]);
+    expect(opened.cell(sheet, 1, 0).display).toBe('2');
+    expect(opened.canUndo).toBe(false);
   });
 });

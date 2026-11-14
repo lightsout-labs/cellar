@@ -217,7 +217,8 @@ Notes:
 
 ## S05: Undo and redo
 
-Status: Todo
+Status: Done
+PR: #8
 
 Acceptance criteria:
 - Ctrl/Cmd+Z undoes and Ctrl/Cmd+Y redoes each change made so far, and the
@@ -228,6 +229,38 @@ Acceptance criteria:
 - Its controls are in the ribbon or a context menu, are translated in both
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
+
+Notes:
+- Before it runs a command, the workbook records a `restore` command that
+  puts back the contents and styles of the cells the command changes, and
+  undo and redo run those. Listeners receive them like any other command,
+  so storage records an undo as a change. A new command needs only the
+  ranges it changes (in `apply` in `engine/workbook`) to be undoable; S06
+  must extend this to sheet changes (add, rename, delete, reorder), which
+  `restore` does not cover.
+- The history keeps 100 changes. Undoing a cleared whole sheet keeps every
+  cell it held in memory; no criterion bounds that yet.
+- `Workbook.fromSnapshot(snapshot, changes)` replays the stored changes with
+  no history: what was undoable before a reload is not after it.
+- Ctrl/Cmd+Z and Ctrl/Cmd+Y are handled on the window (`shortcut` in
+  `src/app/ui/shortcuts.ts`), so they work after a click on the ribbon;
+  during an entry they are left to the editor. Further window shortcuts go
+  there.
+- The ribbon now opens on a Home tab, with the Undo group; View is second.
+  End-to-end tests click the View tab before using its controls. Inactive
+  panels need `.ribbonPanel[hidden] { display: none }`: without it the
+  hidden panel kept its space and took the keyboard focus.
+- Disabled buttons show no tooltip: a disabled element gets no pointer
+  events. The tooltip test enables both Undo and Redo first.
+- Failed fix: moving the focus to the grid after clicking the View tab, so
+  that its tooltip would not block the next one. Radix did not reopen it
+  on hover afterwards; the test hovers the View tab while Home is shown,
+  and finds each tooltip by its name, as the previous one may still be
+  fading out.
+- An end-to-end test that reloads right after a change must wait for the
+  autosave: Chromium discards a recording still under way (S01).
+- Under the load of the whole suite, Firefox's close-and-reopen storage
+  test timed out once at 30 s; it passed three times on its own.
 
 ## S06: Multiple sheets
 

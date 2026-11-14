@@ -153,6 +153,55 @@ describe('View', () => {
     expect(workbook.cell(sheet, 0, 0).display).toBe('');
   });
 
+  it('undoes and redoes a change, selecting the cells it changed', () => {
+    const { workbook, view, sheet } = setup();
+    view.select(single({ row: 2, col: 1 }));
+    view.type('4');
+    view.commit();
+    view.select(single({ row: 9, col: 9 }));
+    view.undo();
+    expect(workbook.cell(sheet, 2, 1).value).toBeNull();
+    expect(view.state.selection).toEqual(single({ row: 2, col: 1 }));
+    view.select(single({ row: 9, col: 9 }));
+    view.redo();
+    expect(workbook.cell(sheet, 2, 1).value).toBe(4);
+    expect(view.state.selection).toEqual(single({ row: 2, col: 1 }));
+  });
+
+  it('selects every range an undone change cleared, the first cell of the last active', () => {
+    const { view } = setup();
+    const ranges = [
+      { top: 0, left: 0, bottom: 1, right: 1 },
+      { top: 3, left: 3, bottom: 5, right: 4 },
+    ];
+    view.select({
+      ranges,
+      active: { row: 0, col: 0 },
+      anchor: { row: 3, col: 3 },
+      focus: { row: 5, col: 4 },
+    });
+    view.clear();
+    view.select(single({ row: 9, col: 9 }));
+    view.undo();
+    expect(view.state.selection).toEqual({
+      ranges,
+      active: { row: 3, col: 3 },
+      anchor: { row: 3, col: 3 },
+      focus: { row: 5, col: 4 },
+    });
+  });
+
+  it('abandons an entry to undo, and keeps the selection when there is nothing to undo or redo', () => {
+    const { workbook, view, sheet } = setup();
+    view.select(single({ row: 1, col: 1 }));
+    view.type('7');
+    view.undo();
+    view.redo();
+    expect(view.state.entry).toBeNull();
+    expect(view.state.selection).toEqual(single({ row: 1, col: 1 }));
+    expect(workbook.cell(sheet, 1, 1).value).toBeNull();
+  });
+
   it('zooms between 50% and 200%', () => {
     const { view } = setup();
     view.zoomTo(1.5);

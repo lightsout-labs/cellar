@@ -23,7 +23,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
   // From top to bottom, each part below the one before and inside the window.
   const parts = [
     page.getByRole('tablist', { name: 'Ribbon' }),
-    page.getByRole('tabpanel', { name: 'View' }),
+    page.getByRole('tabpanel', { name: 'Home' }),
     formulaBar(page),
     page.locator('canvas'),
     page.getByRole('list', { name: 'Sheets' }),
@@ -97,6 +97,15 @@ test.describe('in a browser set to Chinese', () => {
   }) => {
     await openApp(page);
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+    for (const each of [
+      page.getByRole('tab', { name: '开始' }),
+      page.getByRole('group', { name: '撤消' }),
+      page.getByRole('button', { name: '撤消' }),
+      page.getByRole('button', { name: '恢复' }),
+    ]) {
+      await expect(each).toBeVisible();
+    }
+    await page.getByRole('tab', { name: '视图' }).click();
     const chinese = [
       page.getByRole('tablist', { name: '功能区' }),
       page.getByRole('tab', { name: '视图' }),
@@ -146,7 +155,7 @@ test.describe('in a browser set to Chinese', () => {
     for (const each of chinese) await expect(each).toHaveCount(0);
 
     await page.reload();
-    await expect(page.getByRole('tab', { name: 'View' })).toBeVisible();
+    await page.getByRole('tab', { name: 'View' }).click();
     await page.getByRole('button', { name: '中文' }).click();
     await expect(page.getByRole('tab', { name: '视图' })).toBeVisible();
   });
@@ -189,6 +198,7 @@ for (const system of ['light', 'dark'] as const) {
       await openApp(page);
       // A1 and B1 selected; A1, the active cell, is not shaded.
       await page.keyboard.press('Shift+ArrowRight');
+      await page.getByRole('tab', { name: 'View' }).click();
       await expectTheme(system === 'dark');
       await expect(page.getByRole('button', { name: other })).toHaveAttribute(
         'aria-pressed',
@@ -204,6 +214,7 @@ for (const system of ['light', 'dark'] as const) {
 
       await page.reload();
       await expect(page.locator('canvas')).toBeVisible();
+      await page.getByRole('tab', { name: 'View' }).click();
       await expectTheme(system !== 'dark');
     });
   });
@@ -214,28 +225,62 @@ test.describe('the controls', () => {
 
   test('each have a tooltip', async ({ page }) => {
     await openApp(page);
-    const tooltips = [
-      ['tab', 'View', 'Appearance and language'],
-      ['button', 'Light', 'Use the light theme'],
-      ['button', 'Dark', 'Use the dark theme'],
-      ['button', 'English', 'Show the interface in English'],
-      ['button', '中文', 'Show the interface in Simplified Chinese'],
+    // Two changes and an undo enable both Undo and Redo.
+    await clickCell(page, 0, 0);
+    await enter(page, '1');
+    await enter(page, '2');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    const check = async (
+      tooltips: readonly (readonly [
+        'tab' | 'button' | 'slider' | 'textbox',
+        string,
+        string | RegExp,
+      ])[],
+      buttons: number,
+    ) => {
+      for (const [role, name, tooltip] of tooltips) {
+        await page.getByRole(role, { name }).hover();
+        // By name, as the tooltip before may still be fading out.
+        await expect(
+          page.getByRole('tooltip', { name: tooltip }),
+        ).toBeVisible();
+      }
+      // No control of the tab is left out of the list.
+      await expect(page.getByRole('button')).toHaveCount(buttons);
+    };
+    const statusBar = [
       ['button', 'Zoom out', 'Zoom out by 10%'],
       ['button', 'Zoom in', 'Zoom in by 10%'],
       ['slider', 'Zoom', 'Size of the grid'],
       ['textbox', 'Formula bar', 'Contents of the active cell'],
     ] as const;
-    for (const [role, name, tooltip] of tooltips) {
-      await page.getByRole(role, { name }).hover();
-      await expect(page.getByRole('tooltip')).toHaveText(tooltip);
-    }
-    // No control is left out of the list above.
-    await expect(page.getByRole('button')).toHaveCount(6);
+    await check(
+      [
+        ['tab', 'Home', 'The most used commands'],
+        ['tab', 'View', 'Appearance and language'],
+        ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
+        ['button', 'Redo', /^Redo the last change undone \((Ctrl\+|⌘)Y\)$/],
+        ...statusBar,
+      ],
+      4,
+    );
+    await page.getByRole('tab', { name: 'View' }).click();
+    await clickCell(page, 5, 5); // Away from the tab and its tooltip.
+    await check(
+      [
+        ['button', 'Light', 'Use the light theme'],
+        ['button', 'Dark', 'Use the dark theme'],
+        ['button', 'English', 'Show the interface in English'],
+        ['button', '中文', 'Show the interface in Simplified Chinese'],
+        ...statusBar,
+      ],
+      6,
+    );
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
-    ).toHaveCount(1);
+    ).toHaveCount(2);
   });
 
   test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({
@@ -248,7 +293,16 @@ test.describe('the controls', () => {
         (node, property) => getComputedStyle(node).getPropertyValue(property),
         property,
       );
+    // Undo, with nothing to undo, is disabled: faded, with the plain cursor.
+    const undo = page.getByRole('button', { name: 'Undo' });
+    await expect(undo).toBeDisabled();
+    expect(await style(undo, 'opacity')).toBe('0.5');
+    expect(await style(undo, 'cursor')).toBe('default');
+    expect(await style(undo, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+
     const tab = page.getByRole('tab', { name: 'View' });
+    await tab.click();
+    await clickCell(page, 5, 5); // The focus leaves the tab.
     const button = page.getByRole('button', { name: 'Dark' });
     const accent = await style(
       page.getByRole('button', { name: 'Light' }),

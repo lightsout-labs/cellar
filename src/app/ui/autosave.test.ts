@@ -86,6 +86,8 @@ describe('restoreWorkbook', () => {
       changes: [{ type: 'setCell', sheet, row: 1, col: 0, input: '=A1+1' }],
     });
     expect(restored.cell(sheet, 1, 0).display).toBe('2');
+    // The history of undo starts with the workbook opened.
+    expect(restored.canUndo).toBe(false);
   });
 
   it('replays changes over a new workbook when none was saved yet', () => {

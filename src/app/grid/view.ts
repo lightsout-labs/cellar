@@ -1,7 +1,7 @@
-import type { Workbook } from '../../engine/workbook';
+import type { Change, Workbook } from '../../engine/workbook';
 import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
-import { single, type Selection } from './selection';
+import { covering, single, type Selection } from './selection';
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2;
@@ -118,6 +118,19 @@ export class View {
     this.workbook.execute({ type: 'clear', sheet, ranges: selection.ranges });
   }
 
+  /**
+   * Undoes the last change, abandoning the entry, and selects the cells it
+   * changed.
+   */
+  undo(): void {
+    this.reverse(() => this.workbook.undo());
+  }
+
+  /** Redoes the last change undone, as `undo` undoes. */
+  redo(): void {
+    this.reverse(() => this.workbook.redo());
+  }
+
   /** Abandons the entry. */
   cancel(): void {
     this.change({ entry: null });
@@ -129,6 +142,18 @@ export class View {
       Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100,
     );
     this.change({ zoom: percent / 100 });
+  }
+
+  private reverse(run: () => Change | null): void {
+    this.cancel();
+    const change = run();
+    if (change) {
+      this.change({
+        sheet: change.sheet,
+        selection: covering(change.ranges),
+        endMode: false,
+      });
+    }
   }
 
   private change(change: Partial<ViewState>): void {

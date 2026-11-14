@@ -2,6 +2,12 @@ export type Language = 'en' | 'zh';
 
 const en = {
   ribbon: 'Ribbon',
+  'tab.home': 'Home',
+  'tab.home.tooltip': 'The most used commands',
+  undo: 'Undo',
+  'undo.tooltip': 'Undo the last change',
+  redo: 'Redo',
+  'redo.tooltip': 'Redo the last change undone',
   'tab.view': 'View',
   'tab.view.tooltip': 'Appearance and language',
   theme: 'Theme',
@@ -37,6 +43,12 @@ export type Key = keyof typeof en;
 
 const zh: Record<Key, string> = {
   ribbon: '功能区',
+  'tab.home': '开始',
+  'tab.home.tooltip': '最常用的命令',
+  undo: '撤消',
+  'undo.tooltip': '撤消上一次更改',
+  redo: '恢复',
+  'redo.tooltip': '恢复上一次撤消的更改',
   'tab.view': '视图',
   'tab.view.tooltip': '外观和语言',
   theme: '主题',
