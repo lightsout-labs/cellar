@@ -53,7 +53,7 @@ Notes:
 
 ## S02: The application shell, in two languages and two themes
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The window shows a tabbed ribbon, a formula bar with a name box, the grid,
@@ -72,6 +72,28 @@ Acceptance criteria:
   control whose feature is not built yet is absent rather than inert. (R44)
 - The name box shows the address of the active cell, and the formula bar shows
   its contents. (R37)
+
+Notes:
+- The ribbon has one tab, View, with the theme and language choices: no other
+  feature exists yet. Each later slice adds its tabs and controls with
+  `Tooltip` from `src/app/ui/controls.tsx` and the `.button` style, and its
+  strings to both dictionaries of `src/app/ui/i18n.ts`.
+- The name box, the formula bar and the sheet tabs only display. The formula
+  bar becomes editable in S04, the sheet tabs clickable in S06. The status bar
+  shows `Ready` or `Enter`; S03 adds the aggregates and the zoom to it.
+- `View` (`src/app/grid/view.ts`) holds the sheet, the active cell and the
+  entry, and commits the entry to the workbook itself. S03 extends it with the
+  selection, the scroll position and the zoom.
+- Every color is a CSS variable of `src/app/ui/base.css`, and the canvas reads
+  the same variables. A new color goes there, in both themes.
+- No control is disabled yet, so the disabled style has no end-to-end test.
+  Language names (`English`, `中文`) and the name `Cellar` are not translated.
+- Failed fix: `pointer-events: none` on the tooltip. Radix positions it inside
+  a wrapper element that still took the pointer from the controls under it;
+  the rule is on the wrapper.
+- Failed fix: testing the focus outline with `element.focus()`. Chromium
+  matches `:focus-visible` only for focus that comes from the keyboard, and in
+  WebKit Tab skips buttons, as in Safari; the test presses Option+Tab there.
 
 ## S03: Selecting cells and moving around a large sheet
 

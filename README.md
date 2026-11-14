@@ -2,8 +2,9 @@
 
 Cellar is a spreadsheet application that provides the main features of
 Microsoft Excel in the browser, including opening and saving real `.xlsx`
-files, with no installation and no account. It is written in TypeScript, runs
-entirely client-side, and is deployed to GitHub Pages.
+files, with no installation and no account. Its interface is in English and
+Simplified Chinese, with light and dark themes. It is written in TypeScript,
+runs entirely client-side, and is deployed to GitHub Pages.
 
 **Use it at <https://lightsout-labs.github.io/cellar/>.**
 

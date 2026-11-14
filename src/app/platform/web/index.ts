@@ -88,4 +88,10 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
 }
 
 /** The platform for browsers. */
-export const webPlatform: Platform = { workbooks: { load, save } };
+export const webPlatform: Platform = {
+  workbooks: { load, save },
+  preferences: {
+    get: (name) => localStorage.getItem(`cellar.${name}`),
+    set: (name, value) => localStorage.setItem(`cellar.${name}`, value),
+  },
+};

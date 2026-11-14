@@ -1,3 +1,32 @@
+/* The two themes: every color of the interface is one of these variables. */
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --surface: #f7f6f4;
+  --hover: #eceae7;
+  --border: #e2dfdb;
+  --text: #211f1d;
+  --muted: #6d6863;
+  --accent: #9b2c4e;
+  --accent-soft: #f5e3e9;
+  --shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  --radius: 6px;
+  --transition: 120ms ease-out;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --background: #1b1a19;
+  --surface: #252423;
+  --hover: #333130;
+  --border: #3b3937;
+  --text: #edebe8;
+  --muted: #a39e99;
+  --accent: #ec8fab;
+  --accent-soft: #4b2a36;
+  --shadow: 0 4px 12px rgb(0 0 0 / 40%);
+}
+
 html,
 body,
 #root {
@@ -7,6 +36,8 @@ body,
 
 body {
   overflow: hidden;
+  background: var(--background);
+  color: var(--text);
   font-family:
     system-ui,
     -apple-system,
@@ -14,4 +45,5 @@ body {
     Roboto,
     'Helvetica Neue',
     sans-serif;
+  font-size: 13px;
 }

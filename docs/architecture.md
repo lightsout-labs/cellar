@@ -91,6 +91,13 @@ Decisions that are cheap to reverse, with their reasons:
   R41 covers the interface only; one behavior keeps files and tests the
   same in both languages. Function names stay in English in both languages,
   as they are in `.xlsx` files.
+- **A theme is a set of CSS custom properties**, chosen by the `data-theme`
+  attribute of the root element, and every color of the interface is one of
+  them (R42, R43). The canvas reads the same properties when it paints and
+  repaints when the attribute changes, so the grid needs no theme of its
+  own.
+- **The ribbon grows with the features.** A tab or control is added by the
+  slice that builds its feature, so none is ever a placeholder (R44).
 - **Files are opened with a file input and saved as a download.** It works
   in all four browsers; the File System Access API does not.
 - **Cell fonts are a fixed list of fonts present on all three desktop
@@ -117,7 +124,9 @@ workbook leaves the engine.
   while the page unloads: browsers discard an IndexedDB transaction that
   begins then.
 - **Preferences** (language, theme): through `Platform.preferences`, stored
-  in `localStorage` by the web implementation.
+  in `localStorage` by the web implementation, under `cellar.language` and
+  `cellar.theme`. Without a stored choice the language is that of the
+  browser and the theme that of the system.
 - **Files**: `.xlsx` and `.csv`, converted to and from a snapshot by
   `engine/io`. Undo history is not stored.
 

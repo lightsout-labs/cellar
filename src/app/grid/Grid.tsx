@@ -1,7 +1,6 @@
 import {
   useEffect,
   useRef,
-  useState,
   useSyncExternalStore,
   type KeyboardEvent,
   type MouseEvent,
@@ -18,34 +17,22 @@ import {
   type CellPosition,
 } from './geometry';
 import styles from './Grid.module.css';
+import type { View } from './view';
 
-const COLORS = {
-  background: '#ffffff',
-  header: '#f3f3f3',
-  line: '#e1e1e1',
-  headerText: '#5f5f5f',
-  text: '#1f1f1f',
-  accent: '#217346',
-};
 const TEXT_PADDING = 4;
 
 /**
- * The cells of one sheet, drawn on a canvas. A click selects a cell, typing
- * starts an entry in it, Enter commits the entry and moves down, and Escape
- * abandons it.
+ * The cells of the sheet that the view shows, drawn on a canvas. A click
+ * selects a cell, typing starts an entry in it, Enter commits the entry and
+ * moves down, and Escape abandons it.
  */
-export function Grid({
-  workbook,
-  sheet,
-}: {
-  workbook: Workbook;
-  sheet: string;
-}) {
+export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
   const container = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [active, setActive] = useState<CellPosition>({ row: 0, col: 0 });
-  /** The text of the entry being typed, or `null` when there is none. */
-  const [entry, setEntry] = useState<string | null>(null);
+  const { sheet, active, entry } = useSyncExternalStore(
+    view.subscribe,
+    () => view.state,
+  );
   const activeDisplay = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
     () => workbook.cell(sheet, active.row, active.col).display,
@@ -55,25 +42,19 @@ export function Grid({
     const paint = () => draw(canvas.current!, workbook, sheet, active);
     paint();
     const unsubscribe = workbook.subscribe(paint);
-    const observer = new ResizeObserver(paint);
-    observer.observe(canvas.current!);
+    const resize = new ResizeObserver(paint);
+    resize.observe(canvas.current!);
+    // The colors are those of the theme, which is set on the root element.
+    const theme = new MutationObserver(paint);
+    theme.observe(document.documentElement, {
+      attributeFilter: ['data-theme'],
+    });
     return () => {
       unsubscribe();
-      observer.disconnect();
+      resize.disconnect();
+      theme.disconnect();
     };
   }, [workbook, sheet, active]);
-
-  // Closing the editor takes the keyboard from it, and that blur must not
-  // commit an entry that was just committed or abandoned.
-  const closed = useRef(true);
-  const close = (save: boolean) => {
-    if (closed.current) return;
-    closed.current = true;
-    if (save) {
-      workbook.execute({ type: 'setCell', sheet, ...active, input: entry! });
-    }
-    setEntry(null);
-  };
 
   const onMouseDown = (event: MouseEvent) => {
     const bounds = canvas.current!.getBoundingClientRect();
@@ -82,8 +63,7 @@ export function Grid({
       event.clientY - bounds.top,
     );
     if (!cell) return;
-    close(true);
-    setActive(cell);
+    view.select(cell);
     // Keep the keyboard on the grid, which the browser would otherwise
     // take away from the editor that is closing.
     event.preventDefault();
@@ -93,10 +73,9 @@ export function Grid({
   const onKeyDown = (event: KeyboardEvent) => {
     if (entry !== null) {
       if (event.key === 'Enter') {
-        close(true);
-        setActive({ row: active.row + 1, col: active.col });
+        view.select({ row: active.row + 1, col: active.col });
       } else if (event.key === 'Escape') {
-        close(false);
+        view.cancel();
       } else {
         return;
       }
@@ -109,8 +88,7 @@ export function Grid({
       !event.altKey
     ) {
       // The editor opens holding this first character.
-      closed.current = false;
-      setEntry(event.key);
+      view.type(event.key);
       event.preventDefault();
     }
   };
@@ -140,8 +118,8 @@ export function Grid({
           aria-label={cellName(active.row, active.col)}
           autoFocus
           value={entry}
-          onChange={(event) => setEntry(event.target.value)}
-          onBlur={() => close(true)}
+          onChange={(event) => view.type(event.target.value)}
+          onBlur={() => view.commit()}
         />
       )}
       <div role="status" className={styles.announcement}>
@@ -164,15 +142,17 @@ function draw(
   canvas.height = Math.round(height * scale);
   const context = canvas.getContext('2d')!;
   context.scale(scale, scale);
+  const style = getComputedStyle(canvas);
+  const color = (name: string) => style.getPropertyValue(name);
   const { rows, cols } = visibleCells(width, height);
 
-  context.fillStyle = COLORS.background;
+  context.fillStyle = color('--background');
   context.fillRect(0, 0, width, height);
-  context.fillStyle = COLORS.header;
+  context.fillStyle = color('--surface');
   context.fillRect(0, 0, width, COLUMN_HEADER_HEIGHT);
   context.fillRect(0, 0, ROW_HEADER_WIDTH, height);
 
-  context.strokeStyle = COLORS.line;
+  context.strokeStyle = color('--border');
   context.lineWidth = 1;
   context.beginPath();
   for (let row = 0; row <= rows; row++) {
@@ -187,9 +167,9 @@ function draw(
   }
   context.stroke();
 
-  context.font = `13px ${getComputedStyle(canvas).fontFamily}`;
+  context.font = `13px ${style.fontFamily}`;
   context.textBaseline = 'middle';
-  context.fillStyle = COLORS.headerText;
+  context.fillStyle = color('--muted');
   context.textAlign = 'center';
   for (let row = 0; row < rows; row++) {
     const { y } = cellRect({ row, col: 0 });
@@ -204,7 +184,7 @@ function draw(
     );
   }
 
-  context.fillStyle = COLORS.text;
+  context.fillStyle = color('--text');
   context.textAlign = 'left';
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -221,7 +201,7 @@ function draw(
   }
 
   const rect = cellRect(active);
-  context.strokeStyle = COLORS.accent;
+  context.strokeStyle = color('--accent');
   context.lineWidth = 2;
   context.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height);
 }
