@@ -61,11 +61,11 @@ because a requirement needs it.
 | Module | Interface | Hides |
 |---|---|---|
 | `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
-| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, or the formula moved by rows and columns), `calculable(ast)`, `functions` (the names of the library), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
+| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, or the formula moved by rows and columns), `calculable(ast)`, `functions` (the names of the library), `tokenize(text)` (the tokens of a formula still being typed, with their places), `argumentHint(name, index)`, `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions and the names of their arguments (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions`, `tokenize` and `argumentHint` by the help while typing a formula; the workbook re-exports `quoteSheetName` for the app. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, entry, End mode); `keyAction` and the editor marker, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the in-cell editor and its Enter and Edit modes; keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, entry, End mode); `<FormulaEditor>` and `keyAction`, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the in-cell editor and its Enter and Edit modes; function completion, the argument hint, reference colors and F4 (`formula.ts`); keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus, dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -181,6 +181,30 @@ Decisions that are cheap to reverse, with their reasons:
   an arrow commits and moves; F2, a double-click and the formula bar start
   Edit mode, where the arrows move the caret. Enter and Tab commit and
   move in both, and Tab therefore stays in the grid.
+- **An entry knows its cell's sheet and its caret.** While a formula is
+  typed, a click or drag on the grid inserts a reference instead of
+  selecting when a reference can go at the caret: after `=`, an operator,
+  `(` or `,`, or in place of a reference that ends there, which is how a
+  drag grows the reference it started. Clicking another sheet's tab then
+  keeps the entry going in the formula bar, references picked there name
+  the sheet, the grid there shows no selection, and committing or
+  cancelling shows the entry's sheet again. Elsewhere a click commits, as
+  before.
+- **The editors draw a formula's text in colors** by laying a copy of the
+  text, with each reference in a span of its color, over the input box,
+  whose own text is transparent and which still draws the caret and the
+  selection. The same reference has the same color, from six theme
+  variables `--reference-0` to `--reference-5` taken in turn, and the
+  canvas outlines each referenced range of the shown sheet in it.
+- **Function help works on tokens, not the parser**, since a formula
+  being typed is rarely complete. The list offers the functions whose
+  names start with the name before the caret; the arrows move in it, Tab
+  or Enter or a click chooses, and Escape closes it until the entry
+  changes. The hint is that of the innermost function call whose
+  parentheses hold the caret. Insert function, on the Formulas tab, opens
+  the same list with every function, starting a formula in the formula
+  bar if none is being typed. Argument names are Excel's English ones in
+  both languages, as function names are.
 - **Number and date formats do not change with the interface language.**
   R41 covers the interface only; one behavior keeps files and tests the
   same in both languages. Function names stay in English in both languages,

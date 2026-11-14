@@ -478,7 +478,7 @@ Notes:
 
 ## S11: Help while typing a formula
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - Typing a function name after `=` shows a list of matching functions;

@@ -33,6 +33,9 @@ describe('View', () => {
       text: '42',
       mode: 'enter',
       place: 'cell',
+      sheet,
+      caret: 2,
+      allFunctions: false,
     });
     expect(workbook.cell(sheet, 2, 1).display).toBe('');
 
@@ -90,6 +93,9 @@ describe('View', () => {
       text: '12%',
       mode: 'edit',
       place: 'cell',
+      sheet,
+      caret: 3,
+      allFunctions: false,
     });
     view.type('15%');
     view.commit();
@@ -100,17 +106,23 @@ describe('View', () => {
       text: '15%',
       mode: 'edit',
       place: 'formulaBar',
+      sheet,
+      caret: 3,
+      allFunctions: false,
     });
   });
 
   it('keeps the text typed so far when an entry switches to Edit mode', () => {
-    const { view } = setup();
+    const { view, sheet } = setup();
     view.type('ab');
     view.edit('cell');
     expect(view.state.entry).toEqual({
       text: 'ab',
       mode: 'edit',
       place: 'cell',
+      sheet,
+      caret: 2,
+      allFunctions: false,
     });
     view.edit('formulaBar');
     expect(view.state.entry?.place).toBe('formulaBar');
@@ -119,7 +131,119 @@ describe('View', () => {
       text: 'abc',
       mode: 'edit',
       place: 'formulaBar',
+      sheet,
+      caret: 3,
+      allFunctions: false,
     });
+  });
+
+  it('keeps the caret of the entry, at the end of what is typed unless moved', () => {
+    const { view } = setup();
+    view.type('=SUM()');
+    expect(view.state.entry?.caret).toBe(6);
+    view.moveCaret(5);
+    expect(view.state.entry?.caret).toBe(5);
+    view.type('=SUM(1)', 6);
+    expect(view.state.entry?.caret).toBe(6);
+  });
+
+  it('inserts references picked on the grid into a formula', () => {
+    const { workbook, view, sheet } = setup();
+    view.select(single({ row: 4, col: 0 }));
+    expect(view.canPick).toBe(false);
+    view.type('=SUM(');
+    expect(view.canPick).toBe(true);
+    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    // Dragging replaces the reference picked.
+    view.pick({ top: 0, left: 0, bottom: 2, right: 1 });
+    expect(view.state.entry).toMatchObject({ text: '=SUM(A1:B3', caret: 10 });
+    expect(view.state.selection).toEqual(single({ row: 4, col: 0 }));
+    view.type('=SUM(A1:B3)');
+    expect(view.canPick).toBe(false);
+    view.commit();
+    expect(workbook.cell(sheet, 4, 0).input).toBe('=SUM(A1:B3)');
+  });
+
+  it('goes on with a formula on another sheet, and commits it to its own cell', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'addSheet', index: 1 });
+    const second = workbook.sheets[1]!.id;
+    workbook.execute({ type: 'setSheet', sheet: second, name: 'My data' });
+    view.select(single({ row: 1, col: 1 }));
+    view.type('=1+');
+    view.showSheet(second);
+    expect(view.state.sheet).toBe(second);
+    // The cell is not shown, so the entry goes on in the formula bar.
+    expect(view.state.entry).toMatchObject({ place: 'formulaBar', sheet });
+    expect(view.canPick).toBe(true);
+    view.pick({ top: 2, left: 2, bottom: 2, right: 2 });
+    expect(view.state.entry?.text).toBe("=1+'My data'!C3");
+    view.navigate(down);
+    expect(view.state.sheet).toBe(sheet);
+    expect(view.state.selection).toEqual(single({ row: 2, col: 1 }));
+    expect(workbook.cell(sheet, 1, 1).input).toBe("=1+'My data'!C3");
+
+    // Back on its own sheet, a reference has no sheet name; cancelling
+    // also goes back.
+    view.type('=');
+    view.showSheet(second);
+    view.showSheet(sheet);
+    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    expect(view.state.entry?.text).toBe('=A1');
+    view.showSheet(second);
+    view.cancel();
+    expect(view.state).toMatchObject({ sheet, entry: null });
+  });
+
+  it('cycles the reference at the caret between absolute and relative', () => {
+    const { view } = setup();
+    view.cycleReference(); // Nothing to cycle.
+    expect(view.state.entry).toBeNull();
+    view.type('=A1+2');
+    view.moveCaret(3);
+    view.cycleReference();
+    expect(view.state.entry).toMatchObject({ text: '=$A$1+2', caret: 5 });
+    view.moveCaret(7);
+    view.cycleReference();
+    expect(view.state.entry?.text).toBe('=$A$1+2');
+  });
+
+  it('completes the function name typed', () => {
+    const { view } = setup();
+    view.type('=1+ro');
+    view.complete('ROUND');
+    expect(view.state.entry).toMatchObject({ text: '=1+ROUND(', caret: 9 });
+  });
+
+  it('opens the list of every function, in a formula or a new one', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: 'x' });
+    view.insertFunction();
+    expect(view.state.entry).toMatchObject({
+      text: '=',
+      caret: 1,
+      mode: 'edit',
+      place: 'formulaBar',
+      allFunctions: true,
+    });
+    view.complete('ABS');
+    expect(view.state.entry).toMatchObject({
+      text: '=ABS(',
+      allFunctions: false,
+    });
+    view.type('=ABS(1)+', 8);
+    view.insertFunction();
+    expect(view.state.entry).toMatchObject({ text: '=ABS(1)+', caret: 8 });
+    // Moving the caret or typing closes the list.
+    view.moveCaret(2);
+    expect(view.state.entry?.allFunctions).toBe(false);
+    view.insertFunction();
+    view.type('=ABS(1)+S');
+    expect(view.state.entry?.allFunctions).toBe(false);
+    view.cancel();
+    view.type('abc');
+    view.insertFunction();
+    expect(view.state.entry).toMatchObject({ text: '=', mode: 'enter' });
   });
 
   it('clears the selected cells', () => {

@@ -15,9 +15,11 @@
   display: block;
 }
 
-.editor {
+.editorBox {
   position: absolute;
-  box-sizing: border-box;
+}
+
+.editor {
   margin: 0;
   padding: 0 3px;
   border: 2px solid var(--accent);
@@ -25,7 +27,11 @@
   background: var(--background);
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+}
+
+/* The text inside the border and the padding of the editor. */
+.editorMirror {
+  padding: 0 5px;
 }
 
 /* For assistive technology only: the canvas itself cannot be read. */

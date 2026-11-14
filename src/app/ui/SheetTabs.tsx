@@ -15,6 +15,7 @@ import {
   useState,
   useSyncExternalStore,
   type CSSProperties,
+  type MouseEvent,
   type PointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -136,6 +137,11 @@ export function SheetTabs({
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerCancel}
               onShow={() => view.showSheet(sheet.id)}
+              onMouseDown={(event) => {
+                // A formula being typed keeps the keyboard, to go on with
+                // references on that sheet.
+                if (view.state.entry) event.preventDefault();
+              }}
               onRename={() => setRenaming(sheet.id)}
               onInsert={() =>
                 view.execute({ type: 'addSheet', index: index + 1 })
@@ -185,6 +191,7 @@ function SheetTab({
   onPointerUp,
   onPointerCancel,
   onShow,
+  onMouseDown,
   onRename,
   onInsert,
   onDuplicate,
@@ -202,6 +209,7 @@ function SheetTab({
   onPointerUp: (event: PointerEvent) => void;
   onPointerCancel: () => void;
   onShow: () => void;
+  onMouseDown: (event: MouseEvent) => void;
   onRename: () => void;
   onInsert: () => void;
   onDuplicate: () => void;
@@ -229,6 +237,7 @@ function SheetTab({
             }
             data-colored={sheet.color ? '' : undefined}
             onClick={onShow}
+            onMouseDown={onMouseDown}
             onDoubleClick={onRename}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}

@@ -1,6 +1,7 @@
 import type { ErrorValue, Value } from '../value';
 import { areaOf, evaluate, SHEET_COLUMNS, SHEET_ROWS } from './evaluate';
 import { LIBRARY } from './library';
+import { SIGNATURES } from './signatures';
 import {
   columnName,
   error,
@@ -111,6 +112,34 @@ export type Move =
     }
   | { readonly type: 'offset'; readonly rows: number; readonly cols: number };
 
+/** A reference as written in a formula. */
+export type ReferenceAst = Extract<Ast, { type: 'range' }>;
+
+/** What a token of a formula is. */
+type Piece =
+  | { readonly kind: 'reference'; readonly reference: ReferenceAst }
+  /** A name followed by an opening parenthesis. */
+  | { readonly kind: 'function'; readonly name: string }
+  | {
+      readonly kind:
+        | 'name'
+        | 'number'
+        | 'string'
+        | 'error'
+        | 'open'
+        | 'close'
+        | 'comma'
+        | 'operator'
+        | 'other';
+    };
+
+/** A piece of the text of a formula, from `start` up to `end`. */
+export type Token = Piece & { readonly start: number; readonly end: number };
+
+/** The tokens of one character. A colon is the range operator. */
+const SINGLE: Partial<Record<string, 'open' | 'close' | 'comma' | 'operator'>> =
+  { '(': 'open', ')': 'close', ',': 'comma', ':': 'operator' };
+
 // ---------------------------------------------------------------------------
 // Parsing
 
@@ -163,6 +192,69 @@ class Parser {
     const ast = this.expression(0);
     this.skipSpace();
     return ast && this.at === this.text.length ? ast : null;
+  }
+
+  /**
+   * The pieces of the text as far as they can be read, for a formula
+   * still being typed: what the parser would read there, or one character.
+   */
+  tokens(): Token[] {
+    const found: Token[] = [];
+    const { text } = this;
+    for (;;) {
+      this.skipSpace();
+      const start = this.at;
+      if (start >= text.length) return found;
+      const char = text[start]!;
+      const add = (piece: Piece) =>
+        found.push({ ...piece, start, end: this.at });
+      const single = SINGLE[char];
+      if (single) {
+        this.at++;
+        add({ kind: single });
+        continue;
+      }
+      if (char === '"') {
+        if (!this.string()) this.at = text.length;
+        add({ kind: 'string' });
+        continue;
+      }
+      if (this.take(ERROR)) {
+        add({ kind: 'error' });
+        continue;
+      }
+      const quoted = this.take(QUOTED_SHEET);
+      const reference = quoted
+        ? this.range(quoted[1]!.replaceAll("''", "'"))
+        : this.range(undefined);
+      if (reference) {
+        add({ kind: 'reference', reference });
+        continue;
+      }
+      this.at = start;
+      if (this.take(NUMBER)) {
+        add({ kind: 'number' });
+        continue;
+      }
+      const name = this.take(NAME);
+      if (name) {
+        if (text[this.at] === '!') {
+          this.at++;
+          const sheetReference = this.range(name[0]);
+          if (sheetReference) {
+            add({ kind: 'reference', reference: sheetReference });
+            continue;
+          }
+          this.at--;
+        }
+        if (text[this.at] === '(') add({ kind: 'function', name: name[0] });
+        else add({ kind: 'name' });
+        continue;
+      }
+      const operator = this.take(OPERATOR);
+      if (!operator) this.at++;
+      add({ kind: operator ? 'operator' : 'other' });
+    }
   }
 
   private expression(minimum: number): Ast | null {
@@ -297,7 +389,7 @@ class Parser {
    * A cell, a range of cells, a whole column or a whole row; or `null`,
    * having taken nothing when there is no sheet.
    */
-  private range(sheet: string | undefined): Ast | null {
+  private range(sheet: string | undefined): ReferenceAst | null {
     const start = this.at;
     const found =
       this.cellRange() ??
@@ -426,6 +518,39 @@ export function parse(text: string): Ast | null {
   return new Parser(text).formula();
 }
 
+/**
+ * The tokens of the text of a formula, without its leading `=`, as far as
+ * they can be read: the text need not be a whole formula.
+ */
+export function tokenize(text: string): Token[] {
+  return new Parser(text).tokens();
+}
+
+/**
+ * The arguments of a library function as Excel's hint names them, optional
+ * ones in brackets and `...` when they repeat, and which of them the
+ * argument at `index` is: -1 when the function takes no more. `null` for a
+ * name that is not in the library.
+ */
+export function argumentHint(
+  name: string,
+  index: number,
+): { arguments: readonly string[]; current: number } | null {
+  const upper = name.toUpperCase();
+  const signature = SIGNATURES[upper];
+  const spec = LIBRARY[upper];
+  if (signature === undefined || !spec) return null;
+  const shown = signature === '' ? [] : signature.split(', ');
+  const named = shown.filter((each) => each !== '...');
+  let current = index < named.length ? index : -1;
+  if (current < 0 && shown.length > named.length && index < spec.max) {
+    // The optional arguments repeat: SUMIFS's fifth is criteria_range2.
+    const repeated = named.length - spec.min;
+    current = spec.min + ((index - spec.min) % repeated);
+  }
+  return { arguments: shown, current };
+}
+
 // ---------------------------------------------------------------------------
 // Printing and rewriting
 
@@ -515,9 +640,7 @@ export function shift(ast: Ast, move: Move): Ast {
   return visit(ast);
 }
 
-type RangeNode = Extract<Ast, { type: 'range' }>;
-
-function renamed(from: string, to: string): (node: RangeNode) => Ast {
+function renamed(from: string, to: string): (node: ReferenceAst) => Ast {
   const folded = from.toLowerCase();
   return (node) =>
     node.sheet?.toLowerCase() === folded ? { ...node, sheet: to } : node;
@@ -539,7 +662,7 @@ function offset({ rows, cols }: { rows: number; cols: number }) {
       (col === null || (col >= 0 && col < SHEET_COLUMNS));
     return inside ? { ...corner, row, col } : null;
   };
-  return (node: RangeNode): Ast => {
+  return (node: ReferenceAst): Ast => {
     const start = move(node.start);
     const end = node.end && move(node.end);
     if (!start || end === null) return { type: 'error', value: error('#REF!') };

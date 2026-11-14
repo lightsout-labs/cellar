@@ -3,7 +3,6 @@ import {
   useLayoutEffect,
   useRef,
   useSyncExternalStore,
-  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
@@ -28,6 +27,8 @@ import {
   type Target,
   type Viewport,
 } from './geometry';
+import { formulaHelp, type Highlight } from './formula';
+import { FormulaEditor } from './FormulaEditor';
 import styles from './Grid.module.css';
 import { keyAction } from './keys';
 import { pick } from './selection';
@@ -37,20 +38,6 @@ import type { Entry, View, ViewState } from './view';
 const FONT_SIZE = 13;
 export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
-/** The attribute that marks the editors of an entry, in the cell and the formula bar. */
-export const EDITOR = 'data-entry-editor';
-
-/**
- * Whether focus that leaves an editor goes to the other one, so that the
- * entry goes on rather than being committed.
- */
-export function staysInEntry(event: FocusEvent): boolean {
-  return (
-    event.relatedTarget instanceof Element &&
-    event.relatedTarget.hasAttribute(EDITOR)
-  );
-}
-
 /**
  * The cells of the sheet that the view shows, drawn on a canvas that stays
  * in place while the element around it scrolls over the whole sheet. The
@@ -59,7 +46,8 @@ export function staysInEntry(event: FocusEvent): boolean {
 export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const drag = useRef<Target['kind'] | null>(null);
+  /** What a drag selects, or the corner of the range it picks for a formula. */
+  const drag = useRef<Target['kind'] | CellPosition | null>(null);
   const state = useSyncExternalStore(view.subscribe, () => view.state);
   const { sheet, selection, entry, zoom } = state;
   const { active } = selection;
@@ -125,14 +113,15 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     element.scrollTo(element.scrollLeft * ratio, element.scrollTop * ratio);
   }, [zoom]);
 
-  // Another sheet opens at its top left, ready for the keyboard.
+  // Another sheet opens at its top left, ready for the keyboard unless a
+  // formula is being typed in the formula bar.
   const shownSheet = useRef(sheet);
   useLayoutEffect(() => {
     if (shownSheet.current === sheet) return;
     shownSheet.current = sheet;
     scroller.current!.scrollTo(0, 0);
-    scroller.current!.focus();
-  }, [sheet]);
+    if (!view.state.entry) scroller.current!.focus();
+  }, [sheet, view]);
 
   // When an entry in the formula bar ends, the keyboard comes back to the
   // grid, which shows the cell it moved to.
@@ -162,6 +151,16 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
         event.clientY - bounds.top,
         viewport(),
       );
+      if (typeof drag.current === 'object') {
+        const corner = drag.current;
+        view.pick({
+          top: Math.min(corner.row, row),
+          left: Math.min(corner.col, col),
+          bottom: Math.max(corner.row, row),
+          right: Math.max(corner.col, col),
+        });
+        return;
+      }
       const target: Target =
         drag.current === 'row'
           ? { kind: 'row', row }
@@ -197,6 +196,14 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
       event.clientY - bounds.top,
       viewport(),
     );
+    if (target.kind === 'cell' && view.canPick) {
+      const { row, col } = target;
+      view.pick({ top: row, left: col, bottom: row, right: col });
+      drag.current = { row, col };
+      // The editor keeps the keyboard.
+      event.preventDefault();
+      return;
+    }
     const mode = event.shiftKey
       ? 'extend'
       : (MAC ? event.metaKey : event.ctrlKey)
@@ -251,6 +258,8 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
       view.edit('cell');
     } else if (action.type === 'clear') {
       view.clear();
+    } else if (action.type === 'cycleReference') {
+      view.cycleReference();
     } else if (action.type === 'cancel') {
       view.cancel();
       scroller.current!.focus();
@@ -291,26 +300,20 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
           onDoubleClick={onDoubleClick}
         />
       </div>
-      {entry !== null && (
-        <input
-          className={styles.editor}
+      {entry !== null && entry.sheet === sheet && (
+        <FormulaEditor
+          view={view}
+          place="cell"
+          label={cellName(active.row, active.col)}
+          className={styles.editorBox}
+          inputClassName={styles.editor}
+          mirrorClassName={styles.editorMirror}
           style={{
             left: editor.x,
             top: editor.y,
             width: editor.width + 1,
             height: editor.height + 1,
             fontSize: FONT_SIZE * zoom,
-          }}
-          aria-label={cellName(active.row, active.col)}
-          {...{ [EDITOR]: '' }}
-          autoFocus={entry.place === 'cell'}
-          value={entry.text}
-          onChange={(event) => view.type(event.target.value)}
-          onFocus={() => {
-            if (view.state.entry?.place !== 'cell') view.edit('cell');
-          }}
-          onBlur={(event) => {
-            if (!staysInEntry(event)) view.commit();
           }}
         />
       )}
@@ -324,7 +327,7 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
 function draw(
   canvas: HTMLCanvasElement,
   workbook: Workbook,
-  { sheet, selection }: ViewState,
+  { sheet, selection, entry }: ViewState,
   viewport: Viewport,
   width: number,
   height: number,
@@ -369,12 +372,15 @@ function draw(
   context.rect(headerWidth, headerHeight, width, height);
   context.clip();
 
+  // While a formula picks references on another sheet, the selection is
+  // that of the formula's sheet.
+  const selected = entry === null || entry.sheet === sheet;
   context.fillStyle = color('--selection');
-  for (const each of ranges) {
+  for (const each of selected ? ranges : []) {
     const box = rangeRect(each);
     context.fillRect(box.x, box.y, box.width, box.height);
   }
-  if (ranges.length > 1 || !isSingleCell(ranges[0]!)) {
+  if (selected && (ranges.length > 1 || !isSingleCell(ranges[0]!))) {
     // The active cell is not shaded, as in Excel.
     const box = rect(active);
     context.fillStyle = color('--background');
@@ -419,13 +425,14 @@ function draw(
       // The grid lines inside text that runs over are hidden, as in Excel.
       for (let each = from + 1; each <= to; each++) {
         const x = Math.round(rect({ row, col: each }).x);
-        const selected = (c: number) =>
+        const shaded = (c: number) =>
+          selected &&
           ranges.some(
             (r) =>
               row >= r.top && row <= r.bottom && c >= r.left && c <= r.right,
           );
         context.fillStyle = color(
-          selected(each - 1) && selected(each) ? '--selection' : '--background',
+          shaded(each - 1) && shaded(each) ? '--selection' : '--background',
         );
         context.fillRect(x, box.y + 1, 1, box.height - 1);
       }
@@ -442,12 +449,24 @@ function draw(
     }
   }
 
+  // The ranges of the formula being typed, each in its reference's color.
+  context.lineWidth = 2;
+  for (const { area, color: index } of shownReferences(
+    workbook,
+    sheet,
+    entry,
+  )) {
+    const box = rangeRect(area);
+    context.strokeStyle = color(`--reference-${index}`);
+    context.strokeRect(box.x + 1, box.y + 1, box.width - 1, box.height - 1);
+  }
+
   context.strokeStyle = color('--accent');
   context.lineWidth = 2;
-  if (ranges.length === 1) {
+  if (selected && ranges.length === 1) {
     const box = rangeRect(ranges[0]!);
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
-  } else {
+  } else if (selected) {
     const box = rect(active);
     context.lineWidth = 1;
     context.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
@@ -456,6 +475,7 @@ function draw(
 
   // The headers, those of selected rows and columns marked.
   const covers = (each: Range, row: number | null, col: number | null) =>
+    selected &&
     (row === null || (row >= each.top && row <= each.bottom)) &&
     (col === null || (col >= each.left && col <= each.right));
   context.fillStyle = color('--surface');
@@ -514,6 +534,23 @@ function draw(
     context.fillText(columnName(col), x + w / 2, headerHeight / 2);
   }
   context.restore();
+}
+
+/** The references of the entry to cells of the shown sheet. */
+function shownReferences(
+  workbook: Workbook,
+  sheet: string,
+  entry: Entry | null,
+): Highlight[] {
+  if (!entry) return [];
+  const name = workbook.sheets
+    .find((each) => each.id === sheet)!
+    .name.toLowerCase();
+  return formulaHelp(entry.text, entry.caret).references.filter((reference) =>
+    reference.sheet === undefined
+      ? entry.sheet === sheet
+      : reference.sheet.toLowerCase() === name,
+  );
 }
 
 function isSingleCell({ top, left, bottom, right }: Range): boolean {

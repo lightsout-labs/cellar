@@ -11,6 +11,13 @@
   --accent-soft: #f5e3e9;
   --selection: rgb(155 44 78 / 10%);
   --danger: #cd2b31;
+  /* The colors that the references of a formula take in turn. */
+  --reference-0: #1f6feb;
+  --reference-1: #c2410c;
+  --reference-2: #7c3aed;
+  --reference-3: #15803d;
+  --reference-4: #be185d;
+  --reference-5: #0e7490;
   --shadow: 0 4px 12px rgb(0 0 0 / 12%);
   --radius: 6px;
   --transition: 120ms ease-out;
@@ -28,6 +35,12 @@
   --accent-soft: #4b2a36;
   --selection: rgb(236 143 171 / 16%);
   --danger: #ff6369;
+  --reference-0: #6aa7ff;
+  --reference-1: #fb923c;
+  --reference-2: #a78bfa;
+  --reference-3: #4ade80;
+  --reference-4: #f472b6;
+  --reference-5: #22d3ee;
   --shadow: 0 4px 12px rgb(0 0 0 / 40%);
 }
 

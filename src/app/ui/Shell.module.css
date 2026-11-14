@@ -197,9 +197,17 @@
   width: 96px;
 }
 
-.formulaBar {
+.formulaBox {
   flex: 1;
   min-width: 0;
+}
+
+/* The text inside the border and the padding of the formula bar. */
+.formulaMirror {
+  padding: 0 9px;
+}
+
+.formulaBar {
   margin: 0;
   color: var(--text);
   font: inherit;
