@@ -222,14 +222,20 @@ export class Workbook {
   cell(sheetId: string, row: number, col: number): Cell {
     const sheet = this.sheet(sheetId);
     const value = this.value(sheet, row, col);
-    const formula = sheet.formulas.get(key(row, col))?.text ?? null;
+    const formula =
+      sheet.formulas.size === 0
+        ? null
+        : (sheet.formulas.get(key(row, col))?.text ?? null);
     const style = this.styles[sheet.styleIds[col]?.[row] ?? 0];
     const code = style?.numberFormat ?? GENERAL;
     return {
       value,
       formula,
       display: formatValue(value, code),
-      input: formula ?? editText(value, code),
+      // Only the formula bar and the editor need it, not every drawn cell.
+      get input() {
+        return formula ?? editText(value, code);
+      },
     };
   }
 
@@ -348,6 +354,8 @@ export class Workbook {
   }
 
   private value(sheet: Sheet, row: number, col: number): Value {
+    // Most sheets read are plain values; their key is never built.
+    if (sheet.formulas.size === 0) return sheet.columns[col]?.[row] ?? null;
     const cellKey = key(row, col);
     const formula = sheet.formulas.get(cellKey);
     if (!formula) return sheet.columns[col]?.[row] ?? null;

@@ -56,6 +56,10 @@ export function formatValue(value: Value, code: string = GENERAL): string {
   if (isError(value)) return value.error;
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (typeof value === 'string') return value;
+  // The common case, which the grid meets in every cell it draws.
+  if (code === GENERAL && Number.isInteger(value) && Math.abs(value) < 1e11) {
+    return String(value);
+  }
   return format(code, value);
 }
 
