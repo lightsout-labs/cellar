@@ -12,4 +12,10 @@ export interface Platform {
     load(id: string): Promise<Snapshot | null>;
     save(id: string, snapshot: Snapshot): Promise<void>;
   };
+  /** The user's choices, such as the language, that outlive the page. */
+  readonly preferences: {
+    /** The remembered value, or `null` when there is none. */
+    get(name: string): string | null;
+    set(name: string, value: string): void;
+  };
 }

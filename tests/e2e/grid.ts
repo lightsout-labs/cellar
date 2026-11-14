@@ -83,3 +83,19 @@ export async function isCellPainted(
     return false;
   }, rect);
 }
+
+/** The red, green and blue of the background the canvas drew in a cell. */
+export async function cellBackground(
+  page: Page,
+  row: number,
+  col: number,
+): Promise<number[]> {
+  const rect = cellRect({ row, col });
+  return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
+    const scale = canvas.width / canvas.clientWidth;
+    const { data } = canvas
+      .getContext('2d')!
+      .getImageData((rect.x + 4) * scale, (rect.y + 4) * scale, 1, 1);
+    return [data[0]!, data[1]!, data[2]!];
+  }, rect);
+}

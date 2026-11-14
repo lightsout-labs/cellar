@@ -88,4 +88,23 @@ async function save(id: string, snapshot: Snapshot): Promise<void> {
 }
 
 /** The platform for browsers. */
-export const webPlatform: Platform = { workbooks: { load, save } };
+export const webPlatform: Platform = {
+  workbooks: { load, save },
+  // A browser that blocks storage throws; the choice is then not remembered.
+  preferences: {
+    get(name) {
+      try {
+        return localStorage.getItem(`cellar.${name}`);
+      } catch {
+        return null;
+      }
+    },
+    set(name, value) {
+      try {
+        localStorage.setItem(`cellar.${name}`, value);
+      } catch {
+        // Not remembered.
+      }
+    },
+  },
+};
