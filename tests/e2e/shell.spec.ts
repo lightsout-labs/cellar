@@ -50,7 +50,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
   await expect(
     page.getByRole('list', { name: 'Sheets' }).getByRole('listitem'),
   ).toHaveText(['Sheet1']);
-  await expect(page.getByRole('contentinfo')).toHaveText('Ready');
+  await expect(page.getByRole('contentinfo')).toContainText('Ready');
 });
 
 test('the name box and the formula bar follow the active cell', async ({
@@ -74,7 +74,7 @@ test('the name box and the formula bar follow the active cell', async ({
   await expect(formulaBar(page)).toHaveText('');
   await page.keyboard.type('45');
   await expect(formulaBar(page)).toHaveText('45');
-  await expect(page.getByRole('contentinfo')).toHaveText('Enter');
+  await expect(page.getByRole('contentinfo')).toContainText('Enter');
   await page.keyboard.press('Escape');
   await expect(formulaBar(page)).toHaveText('');
 });
@@ -108,10 +108,22 @@ test.describe('in a browser set to Chinese', () => {
       page.getByLabel('编辑栏'),
       page.getByRole('list', { name: '工作表' }),
       page.getByRole('contentinfo').getByText('就绪'),
+      page.getByRole('button', { name: '放大' }),
+      page.getByRole('button', { name: '缩小' }),
+      page.getByRole('slider', { name: '缩放' }),
     ];
     for (const each of chinese) await expect(each).toBeVisible();
     await page.getByRole('button', { name: '深色' }).hover();
     await expect(page.getByRole('tooltip')).toHaveText('使用深色主题');
+    // The summary of a selection is in Chinese too.
+    await page.locator('canvas').click({ position: { x: 4, y: 4 } });
+    await page.locator('canvas').click({ position: { x: 100, y: 36 } });
+    await page.keyboard.type('5');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Shift+ArrowUp');
+    await expect(page.getByLabel('选定区域的汇总')).toHaveText(
+      '平均值: 5计数: 1求和: 5',
+    );
 
     await page.getByRole('button', { name: 'English' }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -126,6 +138,9 @@ test.describe('in a browser set to Chinese', () => {
       formulaBar(page),
       page.getByRole('list', { name: 'Sheets' }),
       page.getByRole('contentinfo').getByText('Ready'),
+      page.getByRole('button', { name: 'Zoom in' }),
+      page.getByRole('button', { name: 'Zoom out' }),
+      page.getByRole('slider', { name: 'Zoom' }),
     ];
     for (const each of english) await expect(each).toBeVisible();
     for (const each of chinese) await expect(each).toHaveCount(0);
@@ -151,6 +166,7 @@ for (const system of ['light', 'dark'] as const) {
         const ribbon = page.getByRole('tabpanel', { name: 'View' });
         const status = page.getByRole('contentinfo');
         const button = page.getByRole('button', { name: 'English' });
+        const zoomIn = page.getByRole('button', { name: 'Zoom in' });
         await expect
           .poll(async () => {
             const [red, green, blue] = await cellBackground(page, 3, 3);
@@ -161,12 +177,18 @@ for (const system of ['light', 'dark'] as const) {
               await isDark(formulaBar(page), 'background-color'),
               !(await isDark(ribbon, 'color')),
               !(await isDark(button, 'color')),
+              !(await isDark(zoomIn, 'color')),
+              // A selected cell is shaded in the theme's own color.
+              (await cellBackground(page, 0, 1)).reduce((a, b) => a + b) / 3 <
+                128,
             ];
           })
-          .toEqual(Array(6).fill(dark));
+          .toEqual(Array(8).fill(dark));
       };
 
       await openApp(page);
+      // A1 and B1 selected; A1, the active cell, is not shaded.
+      await page.keyboard.press('Shift+ArrowRight');
       await expectTheme(system === 'dark');
       await expect(page.getByRole('button', { name: other })).toHaveAttribute(
         'aria-pressed',
@@ -198,13 +220,17 @@ test.describe('the controls', () => {
       ['button', 'Dark', 'Use the dark theme'],
       ['button', 'English', 'Show the interface in English'],
       ['button', '中文', 'Show the interface in Simplified Chinese'],
+      ['button', 'Zoom out', 'Zoom out by 10%'],
+      ['button', 'Zoom in', 'Zoom in by 10%'],
+      ['slider', 'Zoom', 'Size of the grid'],
     ] as const;
     for (const [role, name, tooltip] of tooltips) {
       await page.getByRole(role, { name }).hover();
       await expect(page.getByRole('tooltip')).toHaveText(tooltip);
     }
     // No control is left out of the list above.
-    await expect(page.getByRole('button')).toHaveCount(4);
+    await expect(page.getByRole('button')).toHaveCount(6);
+    await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
     ).toHaveCount(1);
@@ -228,7 +254,8 @@ test.describe('the controls', () => {
     );
 
     await page.mouse.move(500, 400); // Over the grid, away from the controls.
-    for (const control of [tab, button]) {
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' });
+    for (const control of [tab, button, zoomOut]) {
       expect(parseFloat(await style(control, 'border-radius'))).toBeGreaterThan(
         0,
       );
@@ -262,14 +289,26 @@ test.describe('the controls', () => {
     await expect(tab).toBeFocused();
     expect(await style(tab, 'outline-style')).toBe('solid');
 
-    // No control is disabled yet, so one is disabled here to see the state:
-    // faded, with the plain cursor, and unchanged under the pointer.
+    // The controls of the status bar, after the grid in the tab order.
+    await page.locator('canvas').click({ position: { x: 300, y: 200 } });
+    const slider = page.getByRole('slider', { name: 'Zoom' });
+    const zoomIn = page.getByRole('button', { name: 'Zoom in' });
+    for (const control of [zoomOut, slider, zoomIn]) {
+      await page.keyboard.press(key);
+      await expect(control).toBeFocused();
+      expect(await style(control, 'outline-style')).toBe('solid');
+      expect(await style(control, 'outline-color')).toBe(accent);
+    }
+
+    // At 50%, Zoom out is disabled: faded, with the plain cursor, and
+    // unchanged under the pointer.
+    await slider.fill('50');
+    await expect(zoomOut).toBeDisabled();
     await page.mouse.move(500, 400);
-    await button.evaluate((node: HTMLButtonElement) => (node.disabled = true));
-    await expect.poll(() => style(button, 'opacity')).toBe('0.5');
-    expect(await style(button, 'cursor')).toBe('default');
-    await button.hover({ force: true });
+    await expect.poll(() => style(zoomOut, 'opacity')).toBe('0.5');
+    expect(await style(zoomOut, 'cursor')).toBe('default');
+    await zoomOut.hover({ force: true });
     await page.waitForTimeout(300); // Longer than the transition.
-    expect(await style(button, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+    expect(await style(zoomOut, 'background-color')).toBe('rgba(0, 0, 0, 0)');
   });
 });

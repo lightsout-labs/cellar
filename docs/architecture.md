@@ -59,12 +59,12 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()`, `cell(sheet, row, col)` (value, formula, display text, style, note, link), queries (`find`, `aggregate`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot()` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()`, `cell(sheet, row, col)` (value, formula, display text, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot()` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `shift(ast, move)`, `functions` (name, argument hints) | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes)`, `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | The mapping between a workbook snapshot and ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
-| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, scroll position, zoom, edit state) | Canvas drawing and virtualization; frozen panes; hit testing; text measurement and caching; selection, resize, fill-handle and reference-picking gestures; the in-cell editor; keyboard navigation (R2, R3, R8, R9, R16, R21, R45). |
+| `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, edit state, End mode) | Canvas drawing and virtualization; frozen panes; hit testing; text measurement and caching; selection, resize, fill-handle and reference-picking gestures; the in-cell editor; keyboard navigation as in Excel (R2, R3, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus, dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
 
 Boundaries, enforced by the build so that R50 and R51 cannot erode:
@@ -85,6 +85,19 @@ Decisions that are cheap to reverse, with their reasons:
 - **Cells are stored by column**, as arrays of values and of style
   identifiers, with formulas in a sparse map. Ten million populated cells
   (R45) do not fit in memory as one object each.
+- **The grid scrolls natively.** An element that scrolls holds an element
+  the size of the whole sheet at the zoom, and the canvas inside it sticks
+  to the visible area and draws the cells under it on every scroll event.
+  Wheels, trackpads, scroll bars and momentum then behave as everywhere
+  else in the browser. The scroll position is that element's, not the
+  `View`'s. It caps the sheet height: browsers limit an element to between
+  about 17 and 33 million pixels, so a sheet has 100,000 rows of 24 pixels
+  (4.8 million at 200%) and 100 columns, the numbers R1 states. More rows
+  would need scroll bars of our own.
+- **Selection is a list of ranges** with an active cell, and an anchor and
+  focus for the last range, which Shift moves. A whole row, column or sheet
+  is a range that spans the sheet, so the engine's `aggregate` sums any
+  selection the same way.
 - **Dates are Excel serial numbers** with a date format, as in Excel, so
   date arithmetic and `.xlsx` round trips need no conversion.
 - **Number and date formats do not change with the interface language.**
@@ -170,9 +183,9 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 | Level | Covers | How |
 |---|---|---|
 | Unit | The engine through its four interfaces: every command and its undo, every function against results taken from Excel's documentation, reference rewriting, recalculation and its time limit (R46), number formats, XLSX and CSV round trips and the 10 MB open time (R47) | Vitest in the Node environment, with no DOM available |
-| Unit | App logic that needs no browser: translation completeness for both languages, shortcut tables, the printable document | Vitest |
+| Unit | App logic that needs no browser: grid geometry, selection and keyboard navigation, the status bar summary, translation completeness for both languages, shortcut tables, the printable document | Vitest |
 | End to end | Each slice's user flow in the built app: keyboard and mouse on the grid, the ribbon, menus and dialogs, storage across reloads, file open and save, both themes and languages, offline use | Playwright on Chromium, Firefox and WebKit |
-| End to end, Chromium only | The system clipboard (R7), and scrolling speed (R45), measured as the time to draw each frame while scrolling a sheet of 100,000 by 100 populated cells | Playwright |
+| End to end, Chromium only | The system clipboard (R7), and scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
 
 Two requirements cannot be fully checked by automated tests and are checked
 by the human at release acceptance: that files saved by Cellar open in

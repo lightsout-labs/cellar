@@ -17,6 +17,17 @@ const en = {
   sheets: 'Sheets',
   'status.ready': 'Ready',
   'status.enter': 'Enter',
+  'status.endMode': 'End Mode',
+  summary: 'Summary of the selection',
+  'summary.average': 'Average',
+  'summary.count': 'Count',
+  'summary.sum': 'Sum',
+  zoom: 'Zoom',
+  'zoom.tooltip': 'Size of the grid',
+  'zoom.in': 'Zoom in',
+  'zoom.in.tooltip': 'Zoom in by 10%',
+  'zoom.out': 'Zoom out',
+  'zoom.out.tooltip': 'Zoom out by 10%',
 };
 
 /** The name of a string of the interface. */
@@ -39,6 +50,17 @@ const zh: Record<Key, string> = {
   sheets: '工作表',
   'status.ready': '就绪',
   'status.enter': '输入',
+  'status.endMode': '结束模式',
+  summary: '选定区域的汇总',
+  'summary.average': '平均值',
+  'summary.count': '计数',
+  'summary.sum': '求和',
+  zoom: '缩放',
+  'zoom.tooltip': '网格的显示比例',
+  'zoom.in': '放大',
+  'zoom.in.tooltip': '放大 10%',
+  'zoom.out': '缩小',
+  'zoom.out.tooltip': '缩小 10%',
 };
 
 /** Every string of the interface, in each language. */

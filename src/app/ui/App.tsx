@@ -88,7 +88,7 @@ export function App({ platform }: { platform: Platform }) {
             <Grid {...open} />
           </main>
           <SheetTabs {...open} />
-          <StatusBar view={open.view} />
+          <StatusBar {...open} />
         </div>
       </TooltipProvider>
     </Translation>

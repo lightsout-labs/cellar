@@ -15,6 +15,27 @@ export type Command = {
   readonly input: string;
 };
 
+/** The number of rows and columns of every sheet (R1). */
+export const SHEET_ROWS = 100_000;
+export const SHEET_COLUMNS = 100;
+
+/** A rectangle of cells, its bounds included. */
+export interface Range {
+  readonly top: number;
+  readonly left: number;
+  readonly bottom: number;
+  readonly right: number;
+}
+
+/** What a set of cells adds up to, as the status bar shows it. */
+export interface Aggregate {
+  /** The cells that are not empty. */
+  readonly count: number;
+  /** The cells that hold a number, and their total. */
+  readonly numbers: number;
+  readonly sum: number;
+}
+
 /** What a cell holds and shows. */
 export interface Cell {
   readonly value: Value;
@@ -156,6 +177,60 @@ export class Workbook {
     const value = this.value(sheet, row, col);
     const formula = sheet.formulas.get(key(row, col))?.text ?? null;
     return { value, formula, display: formatValue(value) };
+  }
+
+  /**
+   * The count, and the total of the numbers, of the cells of each range. A
+   * cell in two ranges counts twice, as in `SUM`.
+   */
+  aggregate(sheetId: string, ranges: readonly Range[]): Aggregate {
+    const sheet = this.sheet(sheetId);
+    let count = 0;
+    let numbers = 0;
+    let sum = 0;
+    const add = (value: Value) => {
+      if (value === null) return;
+      count++;
+      if (typeof value === 'number') {
+        numbers++;
+        sum += value;
+      }
+    };
+    for (const { top, left, bottom, right } of ranges) {
+      // Formula cells hold null among the values, so they are added apart.
+      const last = Math.min(right, sheet.columns.length - 1);
+      for (let col = left; col <= last; col++) {
+        const column = sheet.columns[col];
+        if (!column) continue;
+        const end = Math.min(bottom, column.length - 1);
+        for (let row = top; row <= end; row++) add(column[row] ?? null);
+      }
+      for (const { row, col } of sheet.formulas.values()) {
+        if (row >= top && row <= bottom && col >= left && col <= right) {
+          add(this.value(sheet, row, col));
+        }
+      }
+    }
+    return { count, numbers, sum };
+  }
+
+  /** How many rows and columns, from A1, the cells in use extend over. */
+  extent(sheetId: string): { rows: number; cols: number } {
+    const sheet = this.sheet(sheetId);
+    let rows = 0;
+    let cols = 0;
+    sheet.columns.forEach((column, col) => {
+      let row = column.length - 1;
+      while (row >= 0 && column[row] == null) row--;
+      if (row < 0) return;
+      rows = Math.max(rows, row + 1);
+      cols = col + 1;
+    });
+    for (const { row, col } of sheet.formulas.values()) {
+      rows = Math.max(rows, row + 1);
+      cols = Math.max(cols, col + 1);
+    }
+    return { rows, cols };
   }
 
   /** Calls `listener` after every change, until the returned function is called. */

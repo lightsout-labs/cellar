@@ -1,6 +1,9 @@
 import { expect, type Page } from '@playwright/test';
 import { cellRect } from '../../src/app/grid/geometry';
 
+/** The sheet scrolled to the top at 100%, where these helpers work. */
+const TOP = { scrollX: 0, scrollY: 0, zoom: 1 };
+
 /**
  * Opens the app and waits for the grid. With CELLAR_COMMIT set, first waits
  * until the address serves the build of that commit, not a cached older one.
@@ -27,7 +30,7 @@ export async function clickCell(
   row: number,
   col: number,
 ): Promise<void> {
-  const rect = cellRect({ row, col });
+  const rect = cellRect({ row, col }, TOP);
   await page.locator('canvas').click({
     position: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
   });
@@ -59,7 +62,7 @@ export async function isCellPainted(
   row: number,
   col: number,
 ): Promise<boolean> {
-  const rect = cellRect({ row, col });
+  const rect = cellRect({ row, col }, TOP);
   return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
     const scale = canvas.width / canvas.clientWidth;
     const inset = 4;
@@ -90,7 +93,7 @@ export async function cellBackground(
   row: number,
   col: number,
 ): Promise<number[]> {
-  const rect = cellRect({ row, col });
+  const rect = cellRect({ row, col }, TOP);
   return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
     const scale = canvas.width / canvas.clientWidth;
     const { data } = canvas
