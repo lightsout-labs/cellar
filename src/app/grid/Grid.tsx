@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useRef,
   useSyncExternalStore,
+  type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
@@ -28,19 +29,32 @@ import {
   type Viewport,
 } from './geometry';
 import styles from './Grid.module.css';
-import { navigationFor } from './navigation';
+import { keyAction } from './keys';
 import { pick } from './selection';
-import type { View, ViewState } from './view';
+import { rowTexts, TEXT_PADDING } from './text';
+import type { Entry, View, ViewState } from './view';
 
-const TEXT_PADDING = 4;
 const FONT_SIZE = 13;
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+export const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** The attribute that marks the editors of an entry, in the cell and the formula bar. */
+export const EDITOR = 'data-entry-editor';
+
+/**
+ * Whether focus that leaves an editor goes to the other one, so that the
+ * entry goes on rather than being committed.
+ */
+export function staysInEntry(event: FocusEvent): boolean {
+  return (
+    event.relatedTarget instanceof Element &&
+    event.relatedTarget.hasAttribute(EDITOR)
+  );
+}
 
 /**
  * The cells of the sheet that the view shows, drawn on a canvas that stays
  * in place while the element around it scrolls over the whole sheet. The
- * mouse and the keyboard select cells as in Excel; typing starts an entry,
- * Enter commits it and moves down, and Escape abandons it.
+ * mouse and the keyboard select and edit cells as in Excel.
  */
 export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -111,6 +125,21 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     element.scrollTo(element.scrollLeft * ratio, element.scrollTop * ratio);
   }, [zoom]);
 
+  // When an entry in the formula bar ends, the keyboard comes back to the
+  // grid, which shows the cell it moved to.
+  useEffect(() => {
+    let previous: Entry | null = view.state.entry;
+    return view.subscribe(() => {
+      const { entry, selection } = view.state;
+      if (previous?.place === 'formulaBar' && entry === null) {
+        scroller.current!.focus();
+        show(selection.active);
+      }
+      previous = entry;
+    });
+    // `show` reads the elements and the view when called.
+  }, [view]);
+
   // Dragging goes on outside the canvas, and ends wherever the button is
   // released.
   useEffect(() => {
@@ -172,20 +201,17 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
     scroller.current!.focus();
   };
 
+  const onDoubleClick = (event: MouseEvent) => {
+    const bounds = canvas.current!.getBoundingClientRect();
+    const target = hitTest(
+      event.clientX - bounds.left,
+      event.clientY - bounds.top,
+      viewport(),
+    );
+    if (target.kind === 'cell') view.edit('cell');
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
-    if (entry !== null) {
-      if (event.key === 'Enter') {
-        view.navigate({ type: 'step', rows: 1, cols: 0, extend: false });
-        show(view.state.selection.active);
-      } else if (event.key === 'Escape') {
-        view.cancel();
-      } else {
-        return;
-      }
-      event.preventDefault();
-      scroller.current!.focus();
-      return;
-    }
     const { width, height } = size();
     const page = {
       rows: Math.max(
@@ -197,7 +223,7 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
         Math.floor((width / zoom - ROW_HEADER_WIDTH) / COLUMN_WIDTH),
       ),
     };
-    const navigation = navigationFor(
+    const action = keyAction(
       {
         key: event.key,
         shift: event.shiftKey,
@@ -205,10 +231,24 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
         meta: event.metaKey,
         alt: event.altKey,
       },
-      { mac: MAC, endMode: state.endMode, page },
+      { mac: MAC, mode: entry?.mode ?? null, endMode: state.endMode, page },
     );
-    if (navigation) {
-      event.preventDefault();
+    if (!action) return;
+    event.preventDefault();
+    if (action.type === 'type') {
+      // The editor opens holding this first character.
+      view.type(action.text);
+    } else if (action.type === 'edit') {
+      view.edit('cell');
+    } else if (action.type === 'clear') {
+      view.clear();
+    } else if (action.type === 'cancel') {
+      view.cancel();
+      scroller.current!.focus();
+    } else {
+      const { navigation } = action;
+      // The editor closes, and the keyboard stays on the grid.
+      scroller.current!.focus();
       view.navigate(navigation);
       if (navigation.type === 'endMode' || navigation.type === 'all') return;
       // A page key turns the page, so the cell keeps its place on screen.
@@ -222,15 +262,6 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
       }
       const { selection } = view.state;
       show(navigation.extend ? selection.focus : selection.active);
-    } else if (
-      event.key.length === 1 &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
-    ) {
-      // The editor opens holding this first character.
-      view.type(event.key);
-      event.preventDefault();
     }
   };
 
@@ -248,6 +279,7 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
           ref={canvas}
           className={styles.canvas}
           onMouseDown={onMouseDown}
+          onDoubleClick={onDoubleClick}
         />
       </div>
       {entry !== null && (
@@ -261,10 +293,16 @@ export function Grid({ workbook, view }: { workbook: Workbook; view: View }) {
             fontSize: FONT_SIZE * zoom,
           }}
           aria-label={cellName(active.row, active.col)}
-          autoFocus
-          value={entry}
+          {...{ [EDITOR]: '' }}
+          autoFocus={entry.place === 'cell'}
+          value={entry.text}
           onChange={(event) => view.type(event.target.value)}
-          onBlur={() => view.commit()}
+          onFocus={() => {
+            if (view.state.entry?.place !== 'cell') view.edit('cell');
+          }}
+          onBlur={(event) => {
+            if (!staysInEntry(event)) view.commit();
+          }}
         />
       )}
       <div role="status" className={styles.announcement}>
@@ -351,22 +389,46 @@ function draw(
 
   context.font = font;
   context.textBaseline = 'middle';
-  context.textAlign = 'left';
   context.fillStyle = color('--text');
+  const measure = (text: string) => context.measureText(text).width / zoom;
+  const padding = TEXT_PADDING * zoom;
   for (let row = range.top; row <= range.bottom; row++) {
-    for (let col = range.left; col <= range.right; col++) {
-      const { display } = workbook.cell(sheet, row, col);
-      if (display === '') continue;
+    const texts = rowTexts(
+      (col) => workbook.cell(sheet, row, col),
+      range.left,
+      range.right,
+      measure,
+    );
+    for (const { col, text, align, from, to } of texts) {
       const box = rect({ row, col });
+      const start = rect({ row, col: from }).x;
+      const end = rect({ row, col: to + 1 }).x;
       context.save();
       context.beginPath();
-      context.rect(box.x + 1, box.y + 1, box.width - 1, box.height - 1);
+      context.rect(start + 1, box.y + 1, end - start - 1, box.height - 1);
       context.clip();
-      context.fillText(
-        display,
-        box.x + TEXT_PADDING * zoom,
-        box.y + box.height / 2 + zoom,
-      );
+      // The grid lines inside text that runs over are hidden, as in Excel.
+      for (let each = from + 1; each <= to; each++) {
+        const x = Math.round(rect({ row, col: each }).x);
+        const selected = (c: number) =>
+          ranges.some(
+            (r) =>
+              row >= r.top && row <= r.bottom && c >= r.left && c <= r.right,
+          );
+        context.fillStyle = color(
+          selected(each - 1) && selected(each) ? '--selection' : '--background',
+        );
+        context.fillRect(x, box.y + 1, 1, box.height - 1);
+      }
+      context.fillStyle = color('--text');
+      context.textAlign = align;
+      const x =
+        align === 'left'
+          ? box.x + padding
+          : align === 'right'
+            ? box.x + box.width - padding
+            : box.x + box.width / 2;
+      context.fillText(text, x, box.y + box.height / 2 + zoom);
       context.restore();
     }
   }

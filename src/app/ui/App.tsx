@@ -1,10 +1,10 @@
 import { Provider as TooltipProvider } from '@radix-ui/react-tooltip';
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { createWorkbook, Workbook } from '../../engine/workbook';
+import type { Workbook } from '../../engine/workbook';
 import { Grid } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { Platform } from '../platform';
-import { startAutosave } from './autosave';
+import { restoreWorkbook, startAutosave } from './autosave';
 import { Translation } from './controls';
 import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
@@ -38,11 +38,9 @@ export function App({ platform }: { platform: Platform }) {
 
   useEffect(() => {
     let current = true;
-    void platform.workbooks.load(WORKBOOK_ID).then((snapshot) => {
+    void platform.workbooks.load(WORKBOOK_ID).then((stored) => {
       if (!current) return;
-      const workbook = snapshot
-        ? Workbook.fromSnapshot(snapshot)
-        : createWorkbook();
+      const workbook = restoreWorkbook(stored);
       setOpen({ workbook, view: new View(workbook) });
     });
     return () => {
@@ -52,9 +50,10 @@ export function App({ platform }: { platform: Platform }) {
 
   useEffect(() => {
     if (!workbook) return;
-    const autosave = startAutosave(workbook, (snapshot) =>
-      platform.workbooks.save(WORKBOOK_ID, snapshot),
-    );
+    const autosave = startAutosave(workbook, {
+      record: (command) => platform.workbooks.record(WORKBOOK_ID, command),
+      save: (snapshot) => platform.workbooks.save(WORKBOOK_ID, snapshot),
+    });
     // A hidden tab may be discarded without warning, so it saves at once.
     const onHidden = () => {
       if (document.visibilityState === 'hidden') autosave.flush();

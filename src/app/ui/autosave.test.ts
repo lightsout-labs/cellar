@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWorkbook } from '../../engine/workbook';
-import { startAutosave } from './autosave';
+import { createWorkbook, type Command } from '../../engine/workbook';
+import { restoreWorkbook, startAutosave } from './autosave';
 
 function setup() {
   const workbook = createWorkbook();
   const sheet = workbook.sheets[0]!.id;
-  const save = vi.fn(() => Promise.resolve());
-  const autosave = startAutosave(workbook, save);
+  const store = {
+    record: vi.fn<(command: Command) => Promise<void>>(() => Promise.resolve()),
+    save: vi.fn(() => Promise.resolve()),
+  };
+  const autosave = startAutosave(workbook, store);
   const edit = (input: string) =>
     workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input });
-  return { workbook, save, autosave, edit };
+  return { workbook, sheet, store, autosave, edit };
 }
 
 describe('autosave', () => {
@@ -20,41 +23,84 @@ describe('autosave', () => {
     vi.useRealTimers();
   });
 
-  it('saves once, half a second after the last change', () => {
-    const { workbook, save, edit } = setup();
+  it('records each change at once', () => {
+    const { sheet, store, edit } = setup();
+    edit('1');
+    expect(store.record).toHaveBeenCalledWith({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '1',
+    });
+    edit('2');
+    expect(store.record).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves the whole workbook once, half a second after the last change', () => {
+    const { workbook, store, edit } = setup();
     edit('1');
     vi.advanceTimersByTime(400);
     edit('2');
     vi.advanceTimersByTime(499);
-    expect(save).not.toHaveBeenCalled();
+    expect(store.save).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenCalledWith(workbook.toSnapshot());
+    expect(store.save).toHaveBeenCalledTimes(1);
+    expect(store.save).toHaveBeenCalledWith(workbook.toSnapshot());
   });
 
   it('saves at once when flushed, and not again later', () => {
-    const { save, autosave, edit } = setup();
+    const { store, autosave, edit } = setup();
     edit('1');
     autosave.flush();
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.save).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1000);
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.save).toHaveBeenCalledTimes(1);
   });
 
   it('does not save when nothing changed', () => {
-    const { save, autosave } = setup();
+    const { store, autosave } = setup();
     autosave.flush();
     vi.advanceTimersByTime(1000);
-    expect(save).not.toHaveBeenCalled();
+    expect(store.save).not.toHaveBeenCalled();
   });
 
   it('saves pending changes when stopped, then ignores later ones', () => {
-    const { save, autosave, edit } = setup();
+    const { store, autosave, edit } = setup();
     edit('1');
     autosave.stop();
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.save).toHaveBeenCalledTimes(1);
     edit('2');
     vi.advanceTimersByTime(1000);
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(store.save).toHaveBeenCalledTimes(1);
+    expect(store.record).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('restoreWorkbook', () => {
+  it('replays the recorded changes over the saved workbook', () => {
+    const { workbook, sheet } = setup();
+    workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '1' });
+    const restored = restoreWorkbook({
+      snapshot: workbook.toSnapshot(),
+      changes: [{ type: 'setCell', sheet, row: 1, col: 0, input: '=A1+1' }],
+    });
+    expect(restored.cell(sheet, 1, 0).display).toBe('2');
+  });
+
+  it('replays changes over a new workbook when none was saved yet', () => {
+    const sheet = createWorkbook().sheets[0]!.id;
+    const restored = restoreWorkbook({
+      snapshot: null,
+      changes: [{ type: 'setCell', sheet, row: 0, col: 0, input: '7' }],
+    });
+    expect(restored.cell(sheet, 0, 0).display).toBe('7');
+  });
+
+  it('starts a new workbook when nothing is stored', () => {
+    expect(restoreWorkbook(null).extent('sheet1')).toEqual({
+      rows: 0,
+      cols: 0,
+    });
   });
 });

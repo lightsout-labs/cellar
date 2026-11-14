@@ -152,7 +152,8 @@ Notes:
 
 ## S04: Editing cells and recognizing what is typed
 
-Status: Todo
+Status: Done
+PR: #6
 
 Acceptance criteria:
 - Typing, double-clicking, F2 and the formula bar each start editing; Enter
@@ -166,6 +167,41 @@ Acceptance criteria:
 - Delete clears the selected cells. (R3)
 - Every edit is saved automatically and is present after closing and reopening
   the browser. (R33)
+
+Notes:
+- Every command is recorded in the IndexedDB store `changes` the moment it
+  is executed, and the whole workbook is saved half a second later, as
+  before; that save deletes the changes it includes, and opening replays
+  the rest (ADR 0005, `restoreWorkbook` in `src/app/ui/autosave.ts`).
+  Undo in S05 must reach storage as commands through the same listener.
+  The database is at version 2; the performance test opens it without a
+  version.
+- Workbook listeners receive the executed command. A `setCell` of a date
+  typed without a year carries the `year` the workbook gave it, so that a
+  replay in a later year gives the same date.
+- `parseInput` uses `numfmt` and returns the value and the format code the
+  typing implies. A typed format sets the number format of the cell's style
+  (the snapshot's `styles` table and each sheet's `styleIds`, both optional
+  for snapshots saved before); a plain number keeps the cell's format, and
+  Delete keeps formats, as in Excel. `Cell.input` is the text to edit
+  (`editText`): percentages with their sign, dates as `m/d/yyyy`, times as
+  `h:mm:ss AM/PM`, other numbers in full.
+- `View.entry` is `{ text, mode, place }`: Enter mode (typing; arrows
+  commit and move) or Edit mode (F2, double-click, formula bar), in the
+  cell or the formula bar. Every key decision is in `keyAction`
+  (`src/app/grid/keys.ts`), which the formula bar shares. Tab commits and
+  moves right without an entry too, so it no longer leaves the grid; the
+  shell test reaches the status bar from the zoom slider. Backspace clears
+  on a Mac, where it is the delete key, and starts an empty entry elsewhere.
+- Text alignment and overflow are computed by `rowTexts`
+  (`src/app/grid/text.ts`) with the uniform column width; S15 must give it
+  the real widths. Numbers too wide for their cell are not yet shown as
+  `###`.
+- Not checked: typing through an input method (Chinese IME). An entry
+  starts on a one-character `key`; a composition sends `Process` and
+  probably starts nothing. It needs a check with a real input method.
+- The status bar average uses the General format, as Excel's does
+  (`0.666666667`).
 
 ## S05: Undo and redo
 

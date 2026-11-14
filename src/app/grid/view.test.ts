@@ -29,7 +29,11 @@ describe('View', () => {
     view.select(single({ row: 2, col: 1 }));
     view.type('4');
     view.type('42');
-    expect(view.state.entry).toBe('42');
+    expect(view.state.entry).toEqual({
+      text: '42',
+      mode: 'enter',
+      place: 'cell',
+    });
     expect(workbook.cell(sheet, 2, 1).display).toBe('');
 
     view.commit();
@@ -76,6 +80,68 @@ describe('View', () => {
     view.navigate({ type: 'endMode' });
     view.select(single({ row: 1, col: 1 }));
     expect(view.state.endMode).toBe(false);
+  });
+
+  it('edits the contents of the active cell, in the cell or the formula bar', () => {
+    const { workbook, view, sheet } = setup();
+    workbook.execute({ type: 'setCell', sheet, row: 0, col: 0, input: '12%' });
+    view.edit('cell');
+    expect(view.state.entry).toEqual({
+      text: '12%',
+      mode: 'edit',
+      place: 'cell',
+    });
+    view.type('15%');
+    view.commit();
+    expect(workbook.cell(sheet, 0, 0).display).toBe('15%');
+
+    view.edit('formulaBar');
+    expect(view.state.entry).toEqual({
+      text: '15%',
+      mode: 'edit',
+      place: 'formulaBar',
+    });
+  });
+
+  it('keeps the text typed so far when an entry switches to Edit mode', () => {
+    const { view } = setup();
+    view.type('ab');
+    view.edit('cell');
+    expect(view.state.entry).toEqual({
+      text: 'ab',
+      mode: 'edit',
+      place: 'cell',
+    });
+    view.edit('formulaBar');
+    expect(view.state.entry?.place).toBe('formulaBar');
+    view.type('abc');
+    expect(view.state.entry).toEqual({
+      text: 'abc',
+      mode: 'edit',
+      place: 'formulaBar',
+    });
+  });
+
+  it('clears the selected cells', () => {
+    const { workbook, view, sheet } = setup();
+    for (const [row, col] of [
+      [0, 0],
+      [1, 1],
+      [3, 3],
+    ] as const) {
+      workbook.execute({ type: 'setCell', sheet, row, col, input: 'x' });
+    }
+    view.select({
+      ranges: [
+        { top: 0, left: 0, bottom: 1, right: 1 },
+        { top: 3, left: 3, bottom: 3, right: 3 },
+      ],
+      active: { row: 0, col: 0 },
+      anchor: { row: 3, col: 3 },
+      focus: { row: 3, col: 3 },
+    });
+    view.clear();
+    expect(workbook.extent(sheet)).toEqual({ rows: 0, cols: 0 });
   });
 
   it('abandons the entry on cancel', () => {

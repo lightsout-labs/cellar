@@ -1,16 +1,25 @@
 import type { Workbook } from '../../engine/workbook';
+import type { EntryMode } from './keys';
 import { navigate, type Navigation, type SheetContents } from './navigation';
 import { single, type Selection } from './selection';
 
 export const ZOOM_MIN = 0.5;
 export const ZOOM_MAX = 2;
 
+/** An entry being typed into the active cell. */
+export interface Entry {
+  readonly text: string;
+  readonly mode: EntryMode;
+  /** Where it is typed: in the cell or in the formula bar. */
+  readonly place: 'cell' | 'formulaBar';
+}
+
 export interface ViewState {
   /** The identifier of the sheet that is shown. */
   readonly sheet: string;
   readonly selection: Selection;
-  /** The text of the entry being typed, or `null` when there is none. */
-  readonly entry: string | null;
+  /** The entry being typed, or `null` when there is none. */
+  readonly entry: Entry | null;
   /** The size of the grid, where 1 is 100%. */
   readonly zoom: number;
   /** Whether End was pressed, so that the next arrow jumps as Ctrl+arrow. */
@@ -69,9 +78,28 @@ export class View {
     this.select(navigate(selection, navigation, contents));
   }
 
-  /** Starts an entry in the active cell, or replaces the text of the one there. */
+  /**
+   * Starts an entry in Enter mode that replaces the contents of the active
+   * cell, or replaces the text of the entry there.
+   */
   type(text: string): void {
-    this.change({ entry: text });
+    const { entry } = this.current;
+    this.change({
+      entry: entry
+        ? { ...entry, text }
+        : { text, mode: 'enter', place: 'cell' },
+    });
+  }
+
+  /**
+   * Starts an entry in Edit mode that holds the contents of the active cell,
+   * or moves the entry there to Edit mode, in the cell or the formula bar.
+   */
+  edit(place: Entry['place']): void {
+    const { sheet, selection, entry } = this.current;
+    const { row, col } = selection.active;
+    const text = entry?.text ?? this.workbook.cell(sheet, row, col).input;
+    this.change({ entry: { text, mode: 'edit', place } });
   }
 
   /** Writes the entry to the active cell. Does nothing without an entry. */
@@ -80,7 +108,14 @@ export class View {
     if (entry === null) return;
     this.change({ entry: null });
     const { row, col } = selection.active;
-    this.workbook.execute({ type: 'setCell', sheet, row, col, input: entry });
+    const input = entry.text;
+    this.workbook.execute({ type: 'setCell', sheet, row, col, input });
+  }
+
+  /** Empties the selected cells. */
+  clear(): void {
+    const { sheet, selection } = this.current;
+    this.workbook.execute({ type: 'clear', sheet, ranges: selection.ranges });
   }
 
   /** Abandons the entry. */

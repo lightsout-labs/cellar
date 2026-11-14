@@ -63,20 +63,20 @@ test('the name box and the formula bar follow the active cell', async ({
 
   await clickCell(page, 1, 0);
   await expect(nameBox(page)).toHaveText('A2');
-  await expect(formulaBar(page)).toHaveText('=A1+1');
+  await expect(formulaBar(page)).toHaveValue('=A1+1');
   await clickCell(page, 0, 0);
   await expect(nameBox(page)).toHaveText('A1');
-  await expect(formulaBar(page)).toHaveText('2');
+  await expect(formulaBar(page)).toHaveValue('2');
 
   // An entry shows in the formula bar while it is typed.
   await clickCell(page, 2, 1);
   await expect(nameBox(page)).toHaveText('B3');
-  await expect(formulaBar(page)).toHaveText('');
+  await expect(formulaBar(page)).toHaveValue('');
   await page.keyboard.type('45');
-  await expect(formulaBar(page)).toHaveText('45');
+  await expect(formulaBar(page)).toHaveValue('45');
   await expect(page.getByRole('contentinfo')).toContainText('Enter');
   await page.keyboard.press('Escape');
-  await expect(formulaBar(page)).toHaveText('');
+  await expect(formulaBar(page)).toHaveValue('');
 });
 
 test.describe('in a browser set to English', () => {
@@ -223,6 +223,7 @@ test.describe('the controls', () => {
       ['button', 'Zoom out', 'Zoom out by 10%'],
       ['button', 'Zoom in', 'Zoom in by 10%'],
       ['slider', 'Zoom', 'Size of the grid'],
+      ['textbox', 'Formula bar', 'Contents of the active cell'],
     ] as const;
     for (const [role, name, tooltip] of tooltips) {
       await page.getByRole(role, { name }).hover();
@@ -231,6 +232,7 @@ test.describe('the controls', () => {
     // No control is left out of the list above.
     await expect(page.getByRole('button')).toHaveCount(6);
     await expect(page.getByRole('slider')).toHaveCount(1);
+    await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
     ).toHaveCount(1);
@@ -289,12 +291,17 @@ test.describe('the controls', () => {
     await expect(tab).toBeFocused();
     expect(await style(tab, 'outline-style')).toBe('solid');
 
-    // The controls of the status bar, after the grid in the tab order.
-    await page.locator('canvas').click({ position: { x: 300, y: 200 } });
+    // The controls of the status bar. Tab moves between cells in the grid,
+    // so the keyboard starts from the slider.
     const slider = page.getByRole('slider', { name: 'Zoom' });
     const zoomIn = page.getByRole('button', { name: 'Zoom in' });
-    for (const control of [zoomOut, slider, zoomIn]) {
-      await page.keyboard.press(key);
+    await slider.click();
+    for (const [control, press] of [
+      [zoomOut, key.replace('Tab', 'Shift+Tab')],
+      [slider, key],
+      [zoomIn, key],
+    ] as const) {
+      await page.keyboard.press(press);
       await expect(control).toBeFocused();
       expect(await style(control, 'outline-style')).toBe('solid');
       expect(await style(control, 'outline-color')).toBe(accent);

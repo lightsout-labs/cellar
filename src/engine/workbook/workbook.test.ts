@@ -31,11 +31,13 @@ describe('workbook', () => {
       value: 3,
       formula: '=A1+1',
       display: '3',
+      input: '=A1+1',
     });
     expect(workbook.cell(sheet, 0, 0)).toEqual({
       value: 2,
       formula: null,
       display: '2',
+      input: '2',
     });
   });
 
@@ -56,6 +58,7 @@ describe('workbook', () => {
       value: 'text',
       formula: null,
       display: 'text',
+      input: 'text',
     });
     set(0, 0, '');
     expect(workbook.cell(sheet, 0, 0).value).toBeNull();
@@ -68,6 +71,7 @@ describe('workbook', () => {
       value: '=A1+',
       formula: null,
       display: '=A1+',
+      input: '=A1+',
     });
   });
 
@@ -86,16 +90,24 @@ describe('workbook', () => {
       value: null,
       formula: null,
       display: '',
+      input: '',
     });
   });
 
   it('notifies subscribers of each change until they unsubscribe', () => {
-    const { workbook, set } = setup();
+    const { workbook, sheet, set } = setup();
     const listener = vi.fn();
     const unsubscribe = workbook.subscribe(listener);
     set(0, 0, '1');
     set(0, 0, '2');
     expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '2',
+    });
     unsubscribe();
     set(0, 0, '3');
     expect(listener).toHaveBeenCalledTimes(2);
@@ -106,12 +118,16 @@ describe('workbook', () => {
     set(0, 0, '2');
     set(1, 0, '=A1+1');
     set(4, 2, 'note');
+    set(5, 0, '1/2/2026');
+    set(6, 0, 'TRUE');
     const snapshot = JSON.parse(JSON.stringify(workbook.toSnapshot()));
     const restored = Workbook.fromSnapshot(snapshot);
     expect(restored.sheets).toEqual(workbook.sheets);
     expect(restored.cell(sheet, 0, 0).display).toBe('2');
     expect(restored.cell(sheet, 1, 0)).toEqual(workbook.cell(sheet, 1, 0));
     expect(restored.cell(sheet, 4, 2).display).toBe('note');
+    expect(restored.cell(sheet, 5, 0)).toEqual(workbook.cell(sheet, 5, 0));
+    expect(restored.cell(sheet, 6, 0).value).toBe(true);
     expect(restored.toSnapshot()).toEqual(snapshot);
   });
 
@@ -192,5 +208,117 @@ describe('workbook', () => {
     expect(workbook.extent(sheet)).toEqual({ rows: 5, cols: 7 });
     set(4, 1, ''); // An emptied cell is no longer in use.
     expect(workbook.extent(sheet)).toEqual({ rows: 3, cols: 7 });
+  });
+
+  it('stores typed numbers, dates, times, percentages and booleans as values with their format', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '1/2/2026');
+    set(1, 0, '12%');
+    set(2, 0, 'true');
+    set(3, 0, '1,234.5');
+    set(4, 0, '13:45');
+    expect(workbook.cell(sheet, 0, 0)).toEqual({
+      value: 46024,
+      formula: null,
+      display: '1/2/2026',
+      input: '1/2/2026',
+    });
+    expect(workbook.cell(sheet, 1, 0)).toMatchObject({
+      value: 0.12,
+      display: '12%',
+      input: '12%',
+    });
+    expect(workbook.cell(sheet, 2, 0)).toMatchObject({
+      value: true,
+      display: 'TRUE',
+    });
+    expect(workbook.cell(sheet, 3, 0)).toMatchObject({
+      value: 1234.5,
+      display: '1,234.50',
+      input: '1234.5',
+    });
+    expect(workbook.cell(sheet, 4, 0).display).toBe('13:45');
+  });
+
+  it("keeps a cell's format when a plain number replaces its value, as Excel does", () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '1/2/2026');
+    set(0, 0, '46025');
+    expect(workbook.cell(sheet, 0, 0).display).toBe('1/3/2026');
+    set(0, 0, '50%');
+    expect(workbook.cell(sheet, 0, 0).display).toBe('50%');
+  });
+
+  it('shows the result of a formula in the format of its cell', () => {
+    const { workbook, sheet, set } = setup();
+    set(0, 0, '1/2/2026');
+    set(0, 0, '=1+46024');
+    expect(workbook.cell(sheet, 0, 0)).toMatchObject({
+      display: '1/3/2026',
+      input: '=1+46024',
+    });
+  });
+
+  it('adds booleans as numbers in formulas', () => {
+    const { set, show } = setup();
+    set(0, 0, 'TRUE');
+    set(0, 1, '=A1+1');
+    expect(show(0, 1)).toBe('2');
+  });
+
+  it('clears the values and formulas of ranges, and keeps their formats', () => {
+    const { workbook, sheet, set, show } = setup();
+    set(0, 0, '1');
+    set(1, 1, '=A1+1');
+    set(2, 0, '12%');
+    set(5, 5, 'outside');
+    const listener = vi.fn();
+    workbook.subscribe(listener);
+    const command = {
+      type: 'clear',
+      sheet,
+      ranges: [
+        { top: 0, left: 0, bottom: 1, right: 1 },
+        { top: 2, left: 0, bottom: SHEET_ROWS - 1, right: 0 },
+      ],
+    } as const;
+    workbook.execute(command);
+    expect(listener).toHaveBeenCalledWith(command);
+    expect(workbook.cell(sheet, 0, 0).value).toBeNull();
+    expect(workbook.cell(sheet, 1, 1)).toMatchObject({
+      value: null,
+      formula: null,
+    });
+    expect(workbook.cell(sheet, 2, 0).value).toBeNull();
+    expect(show(5, 5)).toBe('outside');
+    expect(workbook.extent(sheet)).toEqual({ rows: 6, cols: 6 });
+    set(2, 0, '0.5');
+    expect(show(2, 0)).toBe('50%');
+  });
+
+  it('tells listeners the year it gave a date typed without one, which a replay keeps', () => {
+    const { workbook, sheet } = setup();
+    const listener = vi.fn();
+    workbook.subscribe(listener);
+    workbook.execute({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '2-Jan',
+    });
+    const year = new Date().getFullYear();
+    expect(listener).toHaveBeenCalledWith({
+      type: 'setCell',
+      sheet,
+      row: 0,
+      col: 0,
+      input: '2-Jan',
+      year,
+    });
+
+    const replay = createWorkbook();
+    replay.execute({ ...listener.mock.calls[0]![0], year: 2030 });
+    expect(replay.cell(sheet, 0, 0).input).toBe('1/2/2030');
   });
 });

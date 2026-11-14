@@ -36,6 +36,18 @@ export async function clickCell(
   });
 }
 
+/** Double-clicks the middle of a cell of the canvas grid. */
+export async function doubleClickCell(
+  page: Page,
+  row: number,
+  col: number,
+): Promise<void> {
+  const rect = cellRect({ row, col }, TOP);
+  await page.locator('canvas').dblclick({
+    position: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+  });
+}
+
 /** Types an entry into the active cell and commits it with Enter. */
 export async function enter(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
@@ -54,15 +66,23 @@ export async function expectCell(
 }
 
 /**
- * Whether the canvas has drawn anything inside a cell, away from its grid
- * lines: the share of pixels there that differ from the top-left one.
+ * Whether the canvas has drawn anything inside a cell, or in its left or
+ * right half, away from its grid lines: whether any pixel there differs
+ * from the top-left one.
  */
 export async function isCellPainted(
   page: Page,
   row: number,
   col: number,
+  part: 'whole' | 'left' | 'right' = 'whole',
 ): Promise<boolean> {
-  const rect = cellRect({ row, col }, TOP);
+  const cell = cellRect({ row, col }, TOP);
+  const half = cell.width / 2;
+  const rect = {
+    ...cell,
+    x: part === 'right' ? cell.x + half : cell.x,
+    width: part === 'whole' ? cell.width : half,
+  };
   return page.locator('canvas').evaluate((canvas: HTMLCanvasElement, rect) => {
     const scale = canvas.width / canvas.clientWidth;
     const inset = 4;

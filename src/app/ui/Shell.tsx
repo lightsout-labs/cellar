@@ -1,6 +1,8 @@
 import { Minus, Plus } from 'lucide-react';
 import { useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
 import { cellName, type Workbook } from '../../engine/workbook';
+import { EDITOR, MAC, staysInEntry } from '../grid/Grid';
+import { keyAction } from '../grid/keys';
 import { ZOOM_MAX, ZOOM_MIN, type View } from '../grid/view';
 import { Tooltip, useTranslation } from './controls';
 import styles from './Shell.module.css';
@@ -8,8 +10,12 @@ import { summarize } from './summary';
 
 const ICON_SIZE = 14;
 const ZOOM_STEP = 0.1;
+const ONE_CELL = { rows: 1, cols: 1 };
 
-/** The name of the active cell and, beside it, what the cell holds. */
+/**
+ * The name of the active cell and, beside it, what the cell holds, where
+ * it can be edited.
+ */
 export function FormulaBar({
   workbook,
   view,
@@ -25,23 +31,46 @@ export function FormulaBar({
   const { active } = selection;
   const contents = useSyncExternalStore(
     workbook.subscribe.bind(workbook),
-    () => {
-      const cell = workbook.cell(sheet, active.row, active.col);
-      return cell.formula ?? cell.display;
-    },
+    () => workbook.cell(sheet, active.row, active.col).input,
   );
   return (
     <div className={styles.formulaLine}>
       <div className={styles.nameBox} role="group" aria-label={t('nameBox')}>
         {cellName(active.row, active.col)}
       </div>
-      <div
-        className={styles.formulaBar}
-        role="group"
-        aria-label={t('formulaBar')}
-      >
-        {entry ?? contents}
-      </div>
+      <Tooltip text={t('formulaBar.tooltip')}>
+        <input
+          className={styles.formulaBar}
+          aria-label={t('formulaBar')}
+          {...{ [EDITOR]: '' }}
+          value={entry?.text ?? contents}
+          onFocus={() => {
+            if (view.state.entry?.place !== 'formulaBar')
+              view.edit('formulaBar');
+          }}
+          onChange={(event) => view.type(event.target.value)}
+          onBlur={(event) => {
+            if (!staysInEntry(event)) view.commit();
+          }}
+          onKeyDown={(event) => {
+            // Only Enter, Tab and Escape act here: it is always Edit mode.
+            const action = keyAction(
+              {
+                key: event.key,
+                shift: event.shiftKey,
+                ctrl: event.ctrlKey,
+                meta: event.metaKey,
+                alt: event.altKey,
+              },
+              { mac: MAC, mode: 'edit', endMode: false, page: ONE_CELL },
+            );
+            if (action?.type === 'navigate') view.navigate(action.navigation);
+            else if (action?.type === 'cancel') view.cancel();
+            else return;
+            event.preventDefault();
+          }}
+        />
+      </Tooltip>
     </div>
   );
 }
@@ -103,7 +132,15 @@ export function StatusBar({
   const percent = Math.round(zoom * 100);
   return (
     <footer className={styles.statusBar}>
-      <span>{t(entry === null ? 'status.ready' : 'status.enter')}</span>
+      <span>
+        {t(
+          entry === null
+            ? 'status.ready'
+            : entry.mode === 'enter'
+              ? 'status.enter'
+              : 'status.edit',
+        )}
+      </span>
       {endMode && <span>{t('status.endMode')}</span>}
       <div className={styles.summary} role="group" aria-label={t('summary')}>
         {summary?.average != null && (

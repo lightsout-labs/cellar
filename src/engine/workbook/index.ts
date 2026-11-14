@@ -1,4 +1,4 @@
-import { formatValue, parseInput } from '../format';
+import { editText, formatValue, GENERAL, parseInput } from '../format';
 import { columnName, evaluate, parse, type Ast } from '../formula';
 import { VALUE_ERROR, type Value } from '../value';
 
@@ -6,14 +6,29 @@ export type { Value } from '../value';
 export { columnName } from '../formula';
 
 /** An edit to the workbook. Rows and columns count from zero. */
-export type Command = {
-  readonly type: 'setCell';
-  readonly sheet: string;
-  readonly row: number;
-  readonly col: number;
-  /** What the user typed: a number, text, or a formula starting with `=`. */
-  readonly input: string;
-};
+export type Command =
+  | {
+      readonly type: 'setCell';
+      readonly sheet: string;
+      readonly row: number;
+      readonly col: number;
+      /**
+       * What the user typed: a number, a date, a time, a percentage, a
+       * boolean, text, or a formula starting with `=`.
+       */
+      readonly input: string;
+      /**
+       * The year of a date typed without one. When absent, the current
+       * year, which the workbook adds to the command its listeners get.
+       */
+      readonly year?: number;
+    }
+  | {
+      /** Empties the cells of ranges, keeping their formats. */
+      readonly type: 'clear';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+    };
 
 /** The number of rows and columns of every sheet (R1). */
 export const SHEET_ROWS = 100_000;
@@ -41,7 +56,16 @@ export interface Cell {
   readonly value: Value;
   /** The formula with its leading `=`, or `null` for a plain value. */
   readonly formula: string | null;
+  /** The value shown in the cell's format. */
   readonly display: string;
+  /** The text that edits the cell, as the formula bar shows it. */
+  readonly input: string;
+}
+
+/** How cells look. Cells that look the same share one. */
+export interface Style {
+  /** An Excel format code; `General` when absent. */
+  readonly numberFormat?: string;
 }
 
 export interface SheetInfo {
@@ -50,13 +74,19 @@ export interface SheetInfo {
 }
 
 /** A stored value: formulas keep their text, not their result. */
-type Constant = number | string | null;
+type Constant = number | string | boolean | null;
 
 export interface SheetSnapshot extends SheetInfo {
   /** Values by column, then by row; `null` where a cell is empty. */
   readonly columns: Constant[][];
   /** Formulas as `[row, column, text]`, the text with its leading `=`. */
   readonly formulas: [number, number, string][];
+  /**
+   * Indexes in the workbook's styles by column, then by row; 0 where a cell
+   * has the default style. Absent in snapshots saved before cells had
+   * styles.
+   */
+  readonly styleIds?: number[][];
 }
 
 /**
@@ -67,6 +97,11 @@ export interface Snapshot {
   readonly version: 1;
   readonly name: string;
   readonly sheets: SheetSnapshot[];
+  /**
+   * The distinct styles of the cells, the default one first. Absent in
+   * snapshots saved before cells had styles.
+   */
+  readonly styles?: Style[];
 }
 
 interface Formula {
@@ -80,6 +115,8 @@ interface Sheet extends SheetInfo {
   /** Values by column, then by row. Both levels are sparse. */
   readonly columns: Constant[][];
   readonly formulas: Map<string, Formula>;
+  /** Indexes in the workbook's styles by column, then by row. Both sparse. */
+  readonly styleIds: number[][];
   /** Results of the formulas read since the last change. */
   readonly results: Map<string, Value>;
 }
@@ -101,14 +138,21 @@ export function createWorkbook(): Workbook {
 }
 
 export class Workbook {
-  private readonly listeners = new Set<() => void>();
+  private readonly listeners = new Set<(command: Command) => void>();
   /** Formulas being calculated now, to detect ones that read each other. */
   private readonly calculating = new Set<Formula>();
+  /** The index of each style in `styles`, by its JSON text. */
+  private readonly styleIndex: Map<string, number>;
 
   private constructor(
     private readonly name: string,
     private readonly sheetList: Sheet[],
-  ) {}
+    private readonly styles: Style[],
+  ) {
+    this.styleIndex = new Map(
+      styles.map((style, index) => [JSON.stringify(style), index]),
+    );
+  }
 
   static fromSnapshot(snapshot: Snapshot): Workbook {
     if (snapshot.version !== 1) {
@@ -126,10 +170,11 @@ export class Workbook {
         name: sheet.name,
         columns: sheet.columns.map((column) => [...column]),
         formulas,
+        styleIds: (sheet.styleIds ?? []).map((column) => [...column]),
         results: new Map(),
       };
     });
-    return new Workbook(snapshot.name, sheets);
+    return new Workbook(snapshot.name, sheets, snapshot.styles ?? [{}]);
   }
 
   toSnapshot(): Snapshot {
@@ -146,7 +191,11 @@ export class Workbook {
           sheet.formulas.values(),
           ({ row, col, text }): [number, number, string] => [row, col, text],
         ),
+        styleIds: Array.from(sheet.styleIds, (column) =>
+          Array.from(column ?? [], (id) => id ?? 0),
+        ),
       })),
+      styles: [...this.styles],
     };
   }
 
@@ -157,26 +206,37 @@ export class Workbook {
 
   execute(command: Command): void {
     const sheet = this.sheet(command.sheet);
-    const { row, col, input } = command;
-    const ast = input.startsWith('=') ? parse(input.slice(1)) : null;
-    const column = (sheet.columns[col] ??= []);
-    if (ast) {
-      sheet.formulas.set(key(row, col), { row, col, text: input, ast });
-      column[row] = null;
+    let executed = command;
+    if (command.type === 'setCell') {
+      const year = this.setCell(sheet, command);
+      // Listeners that record the command replay it with the same date.
+      if (year !== undefined) executed = { ...command, year };
     } else {
-      sheet.formulas.delete(key(row, col));
-      column[row] = parseInput(input);
+      for (const range of command.ranges) clear(sheet, range);
     }
-    // Any formula may read the changed cell, so every result is stale.
+    // Any formula may read the changed cells, so every result is stale.
     for (const each of this.sheetList) each.results.clear();
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) listener(executed);
   }
 
   cell(sheetId: string, row: number, col: number): Cell {
     const sheet = this.sheet(sheetId);
     const value = this.value(sheet, row, col);
-    const formula = sheet.formulas.get(key(row, col))?.text ?? null;
-    return { value, formula, display: formatValue(value) };
+    const formula =
+      sheet.formulas.size === 0
+        ? null
+        : (sheet.formulas.get(key(row, col))?.text ?? null);
+    const style = this.styles[sheet.styleIds[col]?.[row] ?? 0];
+    const code = style?.numberFormat ?? GENERAL;
+    return {
+      value,
+      formula,
+      display: formatValue(value, code),
+      // Only the formula bar and the editor need it, not every drawn cell.
+      get input() {
+        return formula ?? editText(value, code);
+      },
+    };
   }
 
   /**
@@ -203,7 +263,17 @@ export class Workbook {
         const column = sheet.columns[col];
         if (!column) continue;
         const end = Math.min(bottom, column.length - 1);
-        for (let row = top; row <= end; row++) add(column[row] ?? null);
+        // The hot loop of a whole sheet, so `add` is written out here.
+        for (let row = top; row <= end; row++) {
+          const value = column[row];
+          if (typeof value === 'number') {
+            count++;
+            numbers++;
+            sum += value;
+          } else if (value != null) {
+            count++;
+          }
+        }
       }
       for (const { row, col } of sheet.formulas.values()) {
         if (row >= top && row <= bottom && col >= left && col <= right) {
@@ -233,10 +303,48 @@ export class Workbook {
     return { rows, cols };
   }
 
-  /** Calls `listener` after every change, until the returned function is called. */
-  subscribe(listener: () => void): () => void {
+  /**
+   * Calls `listener` with each command after it is executed, until the
+   * returned function is called.
+   */
+  subscribe(listener: (command: Command) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Sets a cell, and gives the year it gave a date typed without one. */
+  private setCell(
+    sheet: Sheet,
+    command: Extract<Command, { type: 'setCell' }>,
+  ): number | undefined {
+    const { row, col, input } = command;
+    const ast = input.startsWith('=') ? parse(input.slice(1)) : null;
+    const column = (sheet.columns[col] ??= []);
+    if (ast) {
+      sheet.formulas.set(key(row, col), { row, col, text: input, ast });
+      column[row] = null;
+      return undefined;
+    }
+    sheet.formulas.delete(key(row, col));
+    const { value, format, year } = parseInput(input, command.year);
+    column[row] = value;
+    if (format === undefined) return year;
+    // The way the value was typed sets the cell's format, as in Excel.
+    const ids = (sheet.styleIds[col] ??= []);
+    const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
+    ids[row] = this.styleId(style);
+    return year;
+  }
+
+  /** The index of a style in the table, added if it is new. */
+  private styleId(style: Style): number {
+    const text = JSON.stringify(style);
+    let id = this.styleIndex.get(text);
+    if (id === undefined) {
+      id = this.styles.push(style) - 1;
+      this.styleIndex.set(text, id);
+    }
+    return id;
   }
 
   private sheet(id: string): Sheet {
@@ -246,6 +354,8 @@ export class Workbook {
   }
 
   private value(sheet: Sheet, row: number, col: number): Value {
+    // Most sheets read are plain values; their key is never built.
+    if (sheet.formulas.size === 0) return sheet.columns[col]?.[row] ?? null;
     const cellKey = key(row, col);
     const formula = sheet.formulas.get(cellKey);
     if (!formula) return sheet.columns[col]?.[row] ?? null;
@@ -259,5 +369,21 @@ export class Workbook {
     this.calculating.delete(formula);
     sheet.results.set(cellKey, result);
     return result;
+  }
+}
+
+/** Empties the cells of a range of a sheet, leaving their styles. */
+function clear(sheet: Sheet, { top, left, bottom, right }: Range): void {
+  const last = Math.min(right, sheet.columns.length - 1);
+  for (let col = left; col <= last; col++) {
+    const column = sheet.columns[col];
+    if (!column) continue;
+    const end = Math.min(bottom, column.length - 1);
+    for (let row = top; row <= end; row++) column[row] = null;
+  }
+  for (const [cellKey, { row, col }] of sheet.formulas) {
+    if (row >= top && row <= bottom && col >= left && col <= right) {
+      sheet.formulas.delete(cellKey);
+    }
   }
 }
