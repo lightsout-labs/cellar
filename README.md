@@ -1,12 +1,12 @@
-# Cellar
+# Gridworks
 
-Cellar is a spreadsheet application that provides the main features of
+Gridworks is a spreadsheet application that provides the main features of
 Microsoft Excel in the browser, including opening and saving real `.xlsx`
 files, with no installation and no account. Its interface is in English and
 Simplified Chinese, with light and dark themes. It is written in TypeScript,
 runs entirely client-side, and is deployed to GitHub Pages.
 
-**Use it at <https://lightsout-labs.github.io/cellar/>.**
+**Use it at <https://lightsout-labs.github.io/gridworks/>.**
 
 The requirements are in [docs/requirements.md](docs/requirements.md), the
 design in [docs/architecture.md](docs/architecture.md), and progress in
@@ -14,12 +14,12 @@ design in [docs/architecture.md](docs/architecture.md), and progress in
 
 ## Development
 
-Cellar needs the Node.js version in [.nvmrc](.nvmrc) and `make`.
+Gridworks needs the Node.js version in [.nvmrc](.nvmrc) and `make`.
 
 | Task | Command |
 |---|---|
 | Install | `npm ci`, then `npx playwright install` once for the end-to-end tests |
-| Run locally | `npm run dev`, then open <http://localhost:5173/cellar/> |
+| Run locally | `npm run dev`, then open <http://localhost:5173/gridworks/> |
 | Test | `make check` (format, lint, types, unit tests with coverage, documents) and `make e2e` (the built app in Chromium, Firefox and WebKit) |
 | Build | `npm run build`, which writes the static site to `dist/` |
 

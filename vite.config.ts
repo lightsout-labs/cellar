@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  base: '/cellar/',
+  base: '/gridworks/',
   // The commit a build was made from, so that the smoke test can tell
   // that the address serves the new build.
   define: { __COMMIT__: JSON.stringify(process.env.GITHUB_SHA ?? '') },

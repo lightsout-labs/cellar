@@ -2,13 +2,13 @@
 
 Status: Approved
 
-How Cellar is built. What it must do is in
+How Gridworks is built. What it must do is in
 [requirements.md](requirements.md). Reasons for the decisions that are costly
 to reverse are in the ADRs under `docs/adr/`.
 
 ## Overview
 
-Cellar is a static single-page application in two parts. The **engine** is
+Gridworks is a static single-page application in two parts. The **engine** is
 plain TypeScript with no DOM dependency: it owns the workbook, executes
 every edit as a command, recalculates formulas, and reads and writes files.
 The **app** is the browser side: a canvas that draws the grid, React
@@ -190,7 +190,7 @@ panes, filters, validation rules, conditional formats, notes and
 hyperlinks. It is the only form in which a
 workbook leaves the engine.
 
-- **Browser storage**: an IndexedDB database named `cellar` with three
+- **Browser storage**: an IndexedDB database named `gridworks` with three
   object stores. `workbooks` holds one record for each workbook
   (identifier, name, modification time, workbook properties). `sheets`
   holds one record for each sheet, keyed by workbook and sheet identifier,
@@ -206,8 +206,8 @@ workbook leaves the engine.
   IndexedDB transaction that begins then. See
   [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
 - **Preferences** (language, theme): through `Platform.preferences`, stored
-  in `localStorage` by the web implementation, under `cellar.language` and
-  `cellar.theme`. Without a stored choice the language is that of the
+  in `localStorage` by the web implementation, under `gridworks.language` and
+  `gridworks.theme`. Without a stored choice the language is that of the
   browser and the theme that of the system.
 - **Files**: `.xlsx` and `.csv`, converted to and from a snapshot by
   `engine/io`. Undo history is not stored.
@@ -243,7 +243,7 @@ unit tested, and counts toward the coverage floor.
 | Target | Contents |
 |---|---|
 | `make check` | `prettier --check`, `eslint`, `tsc --noEmit` for both the engine and the app configuration, `vitest run --coverage` with a floor of 90% of lines in `src/engine` and in the parts of `src/app` that have no DOM, `scripts/check-docs.py` |
-| `make e2e` | Builds the production bundle, serves it with `vite preview` under `/cellar/`, and runs the Playwright tests against it |
+| `make e2e` | Builds the production bundle, serves it with `vite preview` under `/gridworks/`, and runs the Playwright tests against it |
 
 CI runs both on every pull request as the required checks `check` and `e2e`.
 
@@ -258,7 +258,7 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 | End to end | Recalculation time (R46): a chain of 100,000 formulas, stored directly in IndexedDB as for R45, whose start is edited | Playwright |
 
 Two requirements cannot be fully checked by automated tests and are checked
-by the human at release acceptance: that files saved by Cellar open in
+by the human at release acceptance: that files saved by Gridworks open in
 Microsoft Excel itself (R30), and the 60 frames per second on a mid-range
 laptop (R45). The automated tests cover them as far as they can: files in
 `tests/fixtures` that were saved by Excel, round trips through the writer
@@ -266,12 +266,12 @@ and reader, and a frame-time budget with headroom for CI machines.
 
 ## Deployment
 
-The app runs at `https://lightsout-labs.github.io/cellar/`. A GitHub Actions
+The app runs at `https://lightsout-labs.github.io/gridworks/`. A GitHub Actions
 workflow runs on every push to `main`: it builds the production bundle with
-the base path `/cellar/`, publishes it with the GitHub Pages actions, and
+the base path `/gridworks/`, publishes it with the GitHub Pages actions, and
 then runs one Playwright smoke test against the live address, which loads
 the app, enters a formula and checks the result. It is the end-to-end test
-tagged `@smoke`, run with `CELLAR_URL` set to the live address and
-`CELLAR_COMMIT` to the deployed commit, which the test waits to be served. A failed smoke test fails
+tagged `@smoke`, run with `GRIDWORKS_URL` set to the live address and
+`GRIDWORKS_COMMIT` to the deployed commit, which the test waits to be served. A failed smoke test fails
 the workflow. A release is verified by that smoke test and by the human's
 acceptance of the deployed app.

@@ -4,7 +4,7 @@ Status: Approved
 
 ## Goal
 
-Cellar is a spreadsheet application that provides the main features of
+Gridworks is a spreadsheet application that provides the main features of
 Microsoft Excel in the browser. It is for people who need to create, open,
 edit and save spreadsheets, including real `.xlsx` files, without installing
 software or creating an account. It is written in TypeScript, runs entirely
@@ -35,7 +35,7 @@ applications.
    values only, formulas only, and formatting only.
 7. Copy and paste work to and from other applications through the system
    clipboard: a range copied from Excel or Google Sheets pastes as a grid of
-   cells, and a range copied from Cellar pastes into them as a grid.
+   cells, and a range copied from Gridworks pastes into them as a grid.
 8. Dragging the fill handle fills a range by copying values, extending
    series (numbers, dates, weekday and month names), and adjusting relative
    references in formulas. Double-clicking the fill handle fills down to
@@ -115,9 +115,9 @@ applications.
 30. The app opens and saves `.xlsx` files. Cell values, formulas, the
     formatting of requirements 17–21, column widths and row heights, merged
     cells, multiple sheets, named ranges, data validation, notes and
-    hyperlinks survive a save in Cellar followed by an open in Excel, and
+    hyperlinks survive a save in Gridworks followed by an open in Excel, and
     the reverse.
-31. Opening an `.xlsx` file that contains features Cellar does not support
+31. Opening an `.xlsx` file that contains features Gridworks does not support
     (for example charts or pivot tables) does not fail: the supported
     content loads and the user is told what was dropped.
 32. The app imports and exports `.csv` files, with correct handling of
@@ -188,7 +188,7 @@ applications.
     platform interface with a single web implementation, so that a desktop
     shell can supply another implementation without changes to the engine
     or the UI.
-52. The repository has a `README.md` that states what Cellar is, links to
+52. The repository has a `README.md` that states what Gridworks is, links to
     the deployed app, lists its features, and gives the commands to
     install, run, test and build it.
 53. The repository has a `LICENSE` file with the MIT license.
@@ -222,7 +222,7 @@ applications.
   desktop, with mouse and keyboard, at window widths of 1024 px and above.
 - Nothing in the engine or UI may prevent later packaging as a Windows,
   Linux and macOS desktop application.
-- The product name is Cellar.
+- The product name is Gridworks.
 
 ## Decisions
 
@@ -243,6 +243,6 @@ requirement above.
 - **Extras**: English and Simplified Chinese interface, dark mode, printing
   and PDF export, cell notes and hyperlinks are all included.
 - **Devices**: desktop browsers only.
-- **Name**: Cellar.
+- **Name**: Gridworks.
 - **Repository documents**: a README, an MIT license and a `CLAUDE.md` are
   required.

@@ -1,4 +1,4 @@
-# 0001: Cellar has its own formula engine and workbook model
+# 0001: Gridworks has its own formula engine and workbook model
 
 ## Context
 
@@ -10,7 +10,7 @@ without a DOM (R50), and the project is MIT licensed.
 Options considered:
 
 - **HyperFormula**. Complete and fast, but licensed under GPLv3 or a paid
-  commercial license. Neither is compatible with distributing Cellar under
+  commercial license. Neither is compatible with distributing Gridworks under
   MIT.
 - **`fast-formula-parser` or a similar MIT parser**. It evaluates formulas
   but has no dependency graph, no reference rewriting and no undo, so most
@@ -20,7 +20,7 @@ Options considered:
 
 ## Decision
 
-Cellar implements its own parser, evaluator, function library and
+Gridworks implements its own parser, evaluator, function library and
 dependency graph, in `src/engine/formula` and `src/engine/workbook`.
 
 ## Consequences

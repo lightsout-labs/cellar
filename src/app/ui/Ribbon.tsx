@@ -42,7 +42,7 @@ export function Ribbon({
       <div className={styles.ribbonTabs}>
         <span className={styles.brand}>
           <Table2 size={ICON_SIZE} aria-hidden />
-          Cellar
+          Gridworks
         </span>
         <Tabs.List aria-label={t('ribbon')}>
           <Tooltip text={t('tab.home.tooltip')}>

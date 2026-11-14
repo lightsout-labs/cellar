@@ -1,6 +1,6 @@
-# Cellar
+# Gridworks
 
-Cellar is a spreadsheet application that provides the main features of
+Gridworks is a spreadsheet application that provides the main features of
 Microsoft Excel in the browser, as a static TypeScript app on GitHub Pages.
 It is built with the `nightshift` workflow. What it must do is in
 `docs/requirements.md`, how it is built is in `docs/architecture.md`, and
@@ -11,10 +11,10 @@ progress is in `docs/backlog.md`.
 - `make check`: Prettier check, ESLint, `tsc` for the engine (without the DOM
   library) and for the whole project, Vitest with the 90% line coverage
   floor, and the document check. Run it after every change.
-- `make e2e`: builds the production bundle, serves it under `/cellar/`, and
+- `make e2e`: builds the production bundle, serves it under `/gridworks/`, and
   runs the Playwright tests on Chromium, Firefox and WebKit. Run it before a
   pull request. It needs `npx playwright install` once.
-- `npm run dev`: runs the app locally at `http://localhost:5173/cellar/`.
+- `npm run dev`: runs the app locally at `http://localhost:5173/gridworks/`.
 - `npx prettier --write .`: formats everything.
 
 ## Rules

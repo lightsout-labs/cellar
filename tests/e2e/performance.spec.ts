@@ -22,7 +22,7 @@ test('a sheet of 100,000 by 100 populated cells scrolls within the frame budget'
       new Promise<void>((resolve, reject) => {
         // The test plays the platform here: no file format can be opened yet.
         // eslint-disable-next-line no-restricted-globals
-        const request = indexedDB.open('cellar');
+        const request = indexedDB.open('gridworks');
         request.onerror = () => reject(request.error!);
         request.onsuccess = () => {
           const transaction = request.result.transaction(

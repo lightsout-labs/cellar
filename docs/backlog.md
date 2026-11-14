@@ -2,7 +2,7 @@
 
 Status: Approved
 
-Slices for Cellar, built in this order. Each one is testable end to end.
+Slices for Gridworks, built in this order. Each one is testable end to end.
 
 ## S01: Walking skeleton: a formula calculated, saved and deployed
 
@@ -22,7 +22,7 @@ Acceptance criteria:
 - `make check` and `make e2e` pass locally and in CI, where `check` and `e2e`
   are required on `main`. (R48)
 - Every merge to `main` deploys the app to
-  `https://lightsout-labs.github.io/cellar/`, and a smoke test against that
+  `https://lightsout-labs.github.io/gridworks/`, and a smoke test against that
   address passes. (R49)
 - The repository has a `README.md` with the deployed link and the install,
   run, test and build commands, the MIT `LICENSE`, and a `CLAUDE.md`. (R52,
@@ -89,7 +89,7 @@ Notes:
 - Every color is a CSS variable of `src/app/ui/base.css`, and the canvas reads
   the same variables. A new color goes there, in both themes.
 - No control is disabled yet; the end-to-end test disables one to see the
-  state. Language names (`English`, `中文`) and the name `Cellar` are not translated.
+  state. Language names (`English`, `中文`) and the name `Gridworks` are not translated.
 - Failed fix: `pointer-events: none` on the tooltip. Radix positions it inside
   a wrapper element that still took the pointer from the controls under it;
   the rule is on the wrapper.
@@ -365,7 +365,7 @@ Acceptance criteria:
   formulas. (R30)
 - The user can save the workbook as an `.xlsx` file, and opening that file
   again gives the same sheets, values and formulas. (R30)
-- A file with charts, pivot tables or formulas Cellar does not know still
+- A file with charts, pivot tables or formulas Gridworks does not know still
   opens, and a message lists what was dropped. (R31)
 - A file that is not a valid `.xlsx` gives an error message and leaves the
   current workbook untouched. (R30)
@@ -424,7 +424,7 @@ Acceptance criteria:
   languages, look right in both themes, and have hover, focus and disabled
   states and tooltips. (R37, R41, R42, R43, R44)
 
-## S12: Cut, copy and paste inside Cellar
+## S12: Cut, copy and paste inside Gridworks
 
 Status: Todo
 
@@ -446,9 +446,9 @@ Acceptance criteria:
 Status: Todo
 
 Acceptance criteria:
-- A range copied in Excel or Google Sheets pastes into Cellar as the same grid
+- A range copied in Excel or Google Sheets pastes into Gridworks as the same grid
   of cells, with typed values recognized. (R7)
-- A range copied in Cellar is placed on the system clipboard as tab-separated
+- A range copied in Gridworks is placed on the system clipboard as tab-separated
   text and as an HTML table, which Excel and Google Sheets paste as a grid.
   (R7)
 - Plain multi-line text pastes one line per row. (R7)
@@ -715,7 +715,7 @@ Acceptance criteria:
 - Notes and hyperlinks survive it. (R30)
 - The fixture files saved by Excel, covering each of these features, open with
   every feature shown correctly. (R30)
-- A feature of the file that Cellar does not support is named in the message
+- A feature of the file that Gridworks does not support is named in the message
   shown after opening. (R31)
 
 ## S29: CSV files

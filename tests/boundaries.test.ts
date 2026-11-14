@@ -9,7 +9,7 @@ async function problems(code: string, filePath: string): Promise<string[]> {
 }
 
 const platformApis = [
-  ['browser storage', 'indexedDB.open("cellar");'],
+  ['browser storage', 'indexedDB.open("gridworks");'],
   ['browser storage', 'localStorage.setItem("theme", "dark");'],
   ['browser storage', 'window.localStorage.getItem("theme");'],
   ['browser storage', 'void navigator.storage.persist();'],

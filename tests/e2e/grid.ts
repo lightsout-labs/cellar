@@ -5,11 +5,11 @@ import { cellRect } from '../../src/app/grid/geometry';
 const TOP = { scrollX: 0, scrollY: 0, zoom: 1 };
 
 /**
- * Opens the app and waits for the grid. With CELLAR_COMMIT set, first waits
+ * Opens the app and waits for the grid. With GRIDWORKS_COMMIT set, first waits
  * until the address serves the build of that commit, not a cached older one.
  */
 export async function openApp(page: Page): Promise<void> {
-  const commit = process.env.CELLAR_COMMIT;
+  const commit = process.env.GRIDWORKS_COMMIT;
   if (commit) {
     await expect(async () => {
       await page.goto('./');
@@ -135,7 +135,7 @@ export async function openStoredSheet(
     (sheet) =>
       new Promise<void>((resolve, reject) => {
         // eslint-disable-next-line no-restricted-globals
-        const request = indexedDB.open('cellar');
+        const request = indexedDB.open('gridworks');
         request.onerror = () => reject(request.error!);
         request.onsuccess = () => {
           const transaction = request.result.transaction(
