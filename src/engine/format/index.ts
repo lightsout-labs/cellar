@@ -51,6 +51,17 @@ export function parseInput(
 }
 
 /**
+ * The serial number of a text that reads as a date, a time or both, as
+ * `DATEVALUE` and `TIMEVALUE` read it, if it does.
+ */
+export function parseDate(text: string): number | undefined {
+  const { value, format } = parseInput(text.trim());
+  return typeof value === 'number' && format && isDateFormat(format)
+    ? value
+    : undefined;
+}
+
+/**
  * The format code of one of Excel's built-in number formats, which files
  * name by number, or `null` for a number that names none.
  */

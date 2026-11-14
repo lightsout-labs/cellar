@@ -141,6 +141,9 @@ const NAME_GOES_ON = /[\w.(!¡-￿]/y;
 const MAX_ROW = 1_048_576;
 const MAX_COLUMN = 16_384;
 
+/** The names of the functions of the library, in alphabetical order. */
+export const functions: readonly string[] = Object.keys(LIBRARY).sort();
+
 /** The prefix that files give the names of functions newer than 2007. */
 const PREFIX = '_XLFN.';
 

@@ -100,7 +100,7 @@ function equalsNumber(number: number, operator: string): Test {
  * to case. It never backtracks further than the last `*`, so that no
  * pattern takes more than the product of the two lengths.
  */
-function wildcards(text: string): (cell: string) => boolean {
+export function wildcards(text: string): (cell: string) => boolean {
   const kinds: ('*' | '?' | 'char')[] = [];
   const chars: string[] = [];
   for (let index = 0; index < text.length; index++) {

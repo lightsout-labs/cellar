@@ -149,7 +149,7 @@ describe('readXlsx', () => {
           {
             name: 'Sheet1',
             rows:
-              '<row r="1"><c r="A1"><v>3</v></c><c r="B1"><f>_xlfn.XLOOKUP(A1,C1:C2,D1:D2)</f><v>9</v></c><c r="C1" t="str"><f>[1]Other!A1</f><v>linked</v></c></row>' +
+              '<row r="1"><c r="A1"><v>3</v></c><c r="B1"><f>OFFSET(A1,1,1)</f><v>9</v></c><c r="C1" t="str"><f>[1]Other!A1</f><v>linked</v></c></row>' +
               '<row r="2"><c r="A2"><f>NOSUCHFUNCTION(A1)</f><v>#NAME?</v></c><c r="DA2"><v>1</v></c></row>' +
               '<row r="100001"><c r="A100001"><v>1</v></c></row>',
           },

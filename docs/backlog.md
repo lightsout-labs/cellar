@@ -439,7 +439,7 @@ Notes:
 
 ## S10: Functions: text, dates, lookup and information
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The text functions return Excel's results for the examples in Excel's

@@ -61,8 +61,8 @@ because a requirement needs it.
 | Module | Interface | Hides |
 |---|---|---|
 | `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
-| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, or the formula moved by rows and columns), `calculable(ast)`, `functions` (name, argument hints), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
-| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
+| `engine/formula` | `parse(text)`, `print(ast, { file })` (with the `_xlfn.` prefix of newer functions for a file), `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, or the formula moved by rows and columns), `calculable(ast)`, `functions` (the names of the library), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
+| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `parseDate(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
 | `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, entry, End mode); `keyAction` and the editor marker, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the in-cell editor and its Enter and Edit modes; keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
@@ -132,16 +132,25 @@ Decisions that are cheap to reverse, with their reasons:
   row or column**, Excel's implicit intersection, and `#VALUE!` when there
   is none; dynamic arrays are out of scope.
 - **Functions are specifications in a library**, one table for each
-  family (math, statistics, logic, conditional totals), each giving its
+  family (math, statistics, logic, conditional totals, text, dates,
+  lookup and reference, information), each giving its
   number of arguments, whether files prefix its name with `_xlfn.`, and
   its implementation. The parser refuses a call with the wrong number of
   arguments, or with a constant where it needs a range (as the first
   argument of `SUMIF`), as Excel does, so it stays text. An implementation receives
   its arguments unevaluated and asks for each as a value, a number or a
   reference, so that `IF`, `IFS` and `IFERROR` evaluate only what they
-  need. A formula reads a range by visiting its cells that are not
-  empty, with their places, so that a whole column costs only its cells
-  and `SUMIF` can pair its ranges cell by cell.
+  need; most read each argument as one type through `typed`, where a
+  read that fails gives its error as the result. A formula reads a range
+  by visiting its cells that are not empty, with their places, so that a
+  whole column costs only its cells and `SUMIF` can pair its ranges cell
+  by cell. A lookup reads only the row or column it searches. `INDEX`,
+  `CHOOSE` and `XLOOKUP` give references, as in Excel.
+- **No function is volatile.** The dependency graph only knows the cells
+  a formula names, so `TODAY` and `NOW` read the clock when their formula
+  is calculated (on entry, on a change to what it reads, and when the
+  workbook opens), and `RAND`, `OFFSET` and `INDIRECT`, whose results or
+  references change without an edit, are not built.
 - **Cells are stored by column**, as arrays of values and of style
   identifiers, with formulas in a sparse map. Ten million populated cells
   (R45) do not fit in memory as one object each.
