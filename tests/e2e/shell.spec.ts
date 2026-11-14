@@ -26,7 +26,7 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
     page.getByRole('tabpanel', { name: 'View' }),
     formulaBar(page),
     page.locator('canvas'),
-    page.getByRole('tablist', { name: 'Sheets' }),
+    page.getByRole('list', { name: 'Sheets' }),
     page.getByRole('contentinfo'),
   ];
   let bottom = 0;
@@ -47,10 +47,9 @@ test('the shell is laid out as in Excel for the web at 1024 px', async ({
   expect(name.y).toBeLessThan(formula.y + formula.height);
   expect(formula.y).toBeLessThan(name.y + name.height);
 
-  await expect(page.getByRole('tab', { name: 'Sheet1' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page.getByRole('list', { name: 'Sheets' }).getByRole('listitem'),
+  ).toHaveText(['Sheet1']);
   await expect(page.getByRole('contentinfo')).toHaveText('Ready');
 });
 
@@ -107,7 +106,7 @@ test.describe('in a browser set to Chinese', () => {
       page.getByRole('group', { name: '语言' }),
       page.getByLabel('名称框'),
       page.getByLabel('编辑栏'),
-      page.getByRole('tablist', { name: '工作表' }),
+      page.getByRole('list', { name: '工作表' }),
       page.getByRole('contentinfo').getByText('就绪'),
     ];
     for (const each of chinese) await expect(each).toBeVisible();
@@ -125,7 +124,7 @@ test.describe('in a browser set to Chinese', () => {
       page.getByRole('group', { name: 'Language' }),
       nameBox(page),
       formulaBar(page),
-      page.getByRole('tablist', { name: 'Sheets' }),
+      page.getByRole('list', { name: 'Sheets' }),
       page.getByRole('contentinfo').getByText('Ready'),
     ];
     for (const each of english) await expect(each).toBeVisible();
@@ -211,40 +210,66 @@ test.describe('the controls', () => {
     ).toHaveCount(1);
   });
 
-  test('are rounded and show hover and keyboard focus with a short transition', async ({
+  test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({
     page,
     browserName,
   }) => {
     await openApp(page);
-    const button = page.getByRole('button', { name: 'Dark' });
-    const style = (property: string) =>
-      button.evaluate(
+    const style = (control: Locator, property: string) =>
+      control.evaluate(
         (node, property) => getComputedStyle(node).getPropertyValue(property),
         property,
       );
+    const tab = page.getByRole('tab', { name: 'View' });
+    const button = page.getByRole('button', { name: 'Dark' });
+    const accent = await style(
+      page.getByRole('button', { name: 'Light' }),
+      'color',
+    );
 
-    expect(parseFloat(await style('border-radius'))).toBeGreaterThan(0);
-    const duration = parseFloat(await style('transition-duration'));
-    expect(duration).toBeGreaterThan(0);
-    expect(duration).toBeLessThanOrEqual(0.2);
+    await page.mouse.move(500, 400); // Over the grid, away from the controls.
+    for (const control of [tab, button]) {
+      expect(parseFloat(await style(control, 'border-radius'))).toBeGreaterThan(
+        0,
+      );
+      const duration = parseFloat(await style(control, 'transition-duration'));
+      expect(duration).toBeGreaterThan(0);
+      expect(duration).toBeLessThanOrEqual(0.2);
 
-    const resting = await style('background-color');
-    await button.hover();
-    await expect.poll(() => style('background-color')).not.toBe(resting);
+      const resting = await style(control, 'background-color');
+      await control.hover();
+      await expect
+        .poll(() => style(control, 'background-color'))
+        .not.toBe(resting);
+      expect(await style(control, 'outline-style')).toBe('none');
+    }
 
     // Focus is outlined in the accent color when it comes from the keyboard.
-    expect(await style('outline-style')).toBe('none');
-    await page.getByRole('tab', { name: 'View' }).focus();
     // Safari reaches buttons with Option+Tab; Tab alone skips them.
-    const tab = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+    const key = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
+    await tab.focus();
     for (let presses = 0; presses < 3; presses++) {
-      await page.keyboard.press(tab); // The panel, Light, then Dark.
+      await page.keyboard.press(key); // The panel, Light, then Dark.
     }
     await expect(button).toBeFocused();
-    await expect.poll(() => style('outline-style')).toBe('solid');
-    const accent = await page
-      .getByRole('button', { name: 'Light' })
-      .evaluate((node) => getComputedStyle(node).color);
-    expect(await style('outline-color')).toBe(accent);
+    for (let presses = 0; presses < 3; presses++) {
+      expect(await style(page.locator(':focus'), 'outline-style')).toBe(
+        'solid',
+      );
+      expect(await style(page.locator(':focus'), 'outline-color')).toBe(accent);
+      await page.keyboard.press(key.replace('Tab', 'Shift+Tab'));
+    }
+    await expect(tab).toBeFocused();
+    expect(await style(tab, 'outline-style')).toBe('solid');
+
+    // No control is disabled yet, so one is disabled here to see the state:
+    // faded, with the plain cursor, and unchanged under the pointer.
+    await page.mouse.move(500, 400);
+    await button.evaluate((node: HTMLButtonElement) => (node.disabled = true));
+    await expect.poll(() => style(button, 'opacity')).toBe('0.5');
+    expect(await style(button, 'cursor')).toBe('default');
+    await button.hover({ force: true });
+    await page.waitForTimeout(300); // Longer than the transition.
+    expect(await style(button, 'background-color')).toBe('rgba(0, 0, 0, 0)');
   });
 });

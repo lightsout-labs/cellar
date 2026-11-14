@@ -26,17 +26,25 @@ export function FormulaBar({
   );
   return (
     <div className={styles.formulaLine}>
-      <div className={styles.nameBox} aria-label={t('nameBox')}>
+      <div className={styles.nameBox} role="group" aria-label={t('nameBox')}>
         {cellName(active.row, active.col)}
       </div>
-      <div className={styles.formulaBar} aria-label={t('formulaBar')}>
+      <div
+        className={styles.formulaBar}
+        role="group"
+        aria-label={t('formulaBar')}
+      >
         {entry ?? contents}
       </div>
     </div>
   );
 }
 
-/** One tab for each sheet of the workbook, the one shown marked. */
+/**
+ * One tab for each sheet of the workbook, the one shown marked. They only
+ * display until there is a second sheet to switch to, so they are a list
+ * and not yet controls.
+ */
 export function SheetTabs({
   workbook,
   view,
@@ -47,13 +55,13 @@ export function SheetTabs({
   const t = useTranslation();
   const { sheet } = useSyncExternalStore(view.subscribe, () => view.state);
   return (
-    <div className={styles.sheetTabs} role="tablist" aria-label={t('sheets')}>
+    <div className={styles.sheetTabs} role="list" aria-label={t('sheets')}>
       {workbook.sheets.map(({ id, name }) => (
         <div
           key={id}
           className={styles.sheetTab}
-          role="tab"
-          aria-selected={id === sheet}
+          role="listitem"
+          aria-current={id === sheet}
         >
           {name}
         </div>
