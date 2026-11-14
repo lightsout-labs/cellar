@@ -312,7 +312,8 @@ Notes:
 
 ## S07: Formulas: operators, references, errors and recalculation
 
-Status: In progress
+Status: Done
+PR: #10
 
 Acceptance criteria:
 - Formulas support `+ - * / ^`, the comparison operators, `&`, `%`, unary
