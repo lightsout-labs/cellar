@@ -140,7 +140,7 @@ export function SheetTabs({
               onMouseDown={(event) => {
                 // A formula being typed keeps the keyboard, to go on with
                 // references on that sheet.
-                if (view.state.entry) event.preventDefault();
+                if (view.canPick) event.preventDefault();
               }}
               onRename={() => setRenaming(sheet.id)}
               onInsert={() =>

@@ -100,8 +100,11 @@ export class View {
 
   /** Changes the selection, after committing an entry that is waiting. */
   select(selection: Selection): void {
+    // A formula typed on another sheet goes to its own cell, and the
+    // selection is that of the sheet shown.
+    const { sheet } = this.current;
     this.commit();
-    this.change({ selection, endMode: false });
+    this.change({ sheet, selection, endMode: false });
   }
 
   /** Moves the selection by the keyboard, after committing a waiting entry. */
@@ -151,15 +154,11 @@ export class View {
 
   /**
    * Whether a click on the grid picks a reference for the formula being
-   * typed rather than selecting: where a reference can go at the caret,
-   * and always on another sheet than the entry's.
+   * typed rather than selecting: where a reference can go at the caret.
    */
   get canPick(): boolean {
-    const { entry, sheet } = this.current;
-    return (
-      entry !== null &&
-      (entry.sheet !== sheet || pickable(entry.text, entry.caret))
-    );
+    const { entry } = this.current;
+    return entry !== null && pickable(entry.text, entry.caret);
   }
 
   /**

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { argumentHint, functions, tokenize } from './index';
-import { LIBRARY } from './library';
+import { argumentHint, functions, parse, tokenize } from './index';
 
 describe('formula tokens', () => {
   it('finds functions, references and separators, with their places', () => {
@@ -60,22 +59,30 @@ describe('argument hints', () => {
   });
 
   it('agrees with the number of arguments each function takes', () => {
+    // Whether a call with so many references parses, as the parser refuses
+    // the wrong number of arguments.
+    const takes = (name: string, count: number) =>
+      parse(`${name}(${Array(count).fill('A1').join(',')})`) !== null;
     for (const name of functions) {
-      const spec = LIBRARY[name]!;
       const hint = argumentHint(name, 0)!;
       const names = hint.arguments.filter((each) => each !== '...');
       const optional = names.filter((each) => each.startsWith('['));
-      const repeats = hint.arguments.includes('...');
-      expect([name, names.length - optional.length]).toEqual([name, spec.min]);
-      if (repeats) {
-        expect([name, spec.max > names.length]).toEqual([name, true]);
-        expect([name, optional.length]).toEqual([
-          name,
-          spec.pairs ? 2 : optional.length,
-        ]);
+      const required = names.length - optional.length;
+      const facts = [
+        required === 0 || !takes(name, required - 1),
+        takes(name, required),
+        takes(name, names.length),
+      ];
+      if (hint.arguments.includes('...')) {
+        // The optional arguments repeat.
+        facts.push(
+          optional.length > 0,
+          takes(name, names.length + optional.length),
+        );
       } else {
-        expect([name, names.length]).toEqual([name, spec.max]);
+        facts.push(!takes(name, names.length + 1));
       }
+      expect([name, facts.every(Boolean)]).toEqual([name, true]);
     }
   });
 });

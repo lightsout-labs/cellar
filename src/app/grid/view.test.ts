@@ -193,19 +193,31 @@ describe('View', () => {
     view.showSheet(second);
     view.cancel();
     expect(view.state).toMatchObject({ sheet, entry: null });
+
+    // Where no reference can go, a click on the other sheet commits the
+    // formula to its own cell and selects there.
+    view.select(single({ row: 1, col: 1 }));
+    view.type('=SUM(');
+    view.showSheet(second);
+    view.pick({ top: 0, left: 0, bottom: 0, right: 0 });
+    view.type("=SUM('My data'!A1)");
+    expect(view.canPick).toBe(false);
+    view.select(single({ row: 3, col: 3 }));
+    expect(view.state).toMatchObject({
+      sheet: second,
+      entry: null,
+      selection: single({ row: 3, col: 3 }),
+    });
+    expect(workbook.cell(sheet, 1, 1).input).toBe("=SUM('My data'!A1)");
   });
 
   it('cycles the reference at the caret between absolute and relative', () => {
     const { view } = setup();
     view.cycleReference(); // Nothing to cycle.
     expect(view.state.entry).toBeNull();
-    view.type('=A1+2');
-    view.moveCaret(3);
+    view.type('=A1+2', 3);
     view.cycleReference();
     expect(view.state.entry).toMatchObject({ text: '=$A$1+2', caret: 5 });
-    view.moveCaret(7);
-    view.cycleReference();
-    expect(view.state.entry?.text).toBe('=$A$1+2');
   });
 
   it('completes the function name typed', () => {

@@ -1,4 +1,5 @@
 import {
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -58,6 +59,7 @@ export function FormulaEditor({
 } & Omit<ComponentPropsWithRef<'div'>, 'onKeyDown'>) {
   const t = useTranslation();
   const input = useRef<HTMLInputElement>(null);
+  const listId = useId();
   const mirror = useRef<HTMLDivElement>(null);
   const { entry } = useSyncExternalStore(view.subscribe, () => view.state);
   const text = entry?.text ?? contents;
@@ -126,6 +128,10 @@ export function FormulaEditor({
         className={classes(styles.input, inputClassName)}
         data-formula={help && text.startsWith('=') ? '' : undefined}
         aria-label={label}
+        aria-autocomplete="list"
+        aria-expanded={names !== null}
+        aria-controls={names ? listId : undefined}
+        aria-activedescendant={names ? `${listId}-${highlighted}` : undefined}
         {...{ [EDITOR]: place }}
         value={text}
         onFocus={() => {
@@ -155,6 +161,7 @@ export function FormulaEditor({
       )}
       {names && (
         <ul
+          id={listId}
           className={styles.popup}
           role="listbox"
           aria-label={t('formula.functions')}
@@ -162,6 +169,7 @@ export function FormulaEditor({
           {names.map((name, index) => (
             <li
               key={name}
+              id={`${listId}-${index}`}
               role="option"
               className={styles.option}
               aria-selected={index === highlighted}
