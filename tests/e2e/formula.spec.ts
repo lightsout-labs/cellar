@@ -128,3 +128,25 @@ test('a change that 100,000 formulas depend on shows within a second, and input 
   await page.keyboard.press('ControlOrMeta+ArrowDown');
   await expect(page.getByRole('status')).toHaveText(`B${rows} ${rows + 2}`);
 });
+
+test('text, date, lookup and information functions give their results', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, 'pear');
+  await enter(page, 'apple');
+  await clickCell(page, 0, 1);
+  await enter(page, '3');
+  await enter(page, '5');
+  await clickCell(page, 0, 2);
+  await enter(page, '=VLOOKUP("apple",A1:B2,2,FALSE)&"/"&PROPER(A1)');
+  await enter(page, '=TEXT(DATE(2024,2,29)+1,"yyyy-mm-dd")');
+  await enter(page, '=XLOOKUP("kiwi",A1:A2,B1:B2)');
+  await enter(page, '=ISNA(C3)');
+
+  await expectCell(page, 0, 2, 'C1 5/Pear');
+  await expectCell(page, 1, 2, 'C2 2024-03-01');
+  await expectCell(page, 2, 2, 'C3 #N/A');
+  await expectCell(page, 3, 2, 'C4 TRUE');
+});

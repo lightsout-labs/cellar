@@ -70,7 +70,7 @@ type Rounding = 'near' | 'up' | 'down';
  * negative), away from zero for `near` halves and `up`. The number is
  * first taken to 15 digits, so that 1.005 rounds as Excel shows it.
  */
-function round(n: number, digits: number, rounding: Rounding): number {
+export function round(n: number, digits: number, rounding: Rounding): number {
   const places = Math.trunc(digits);
   const scale = 10 ** Math.abs(places);
   const scaled = digits15(

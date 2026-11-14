@@ -188,6 +188,14 @@ class Arguments implements Args {
     return this.asts.length;
   }
 
+  get row(): number {
+    return this.context.row;
+  }
+
+  get col(): number {
+    return this.context.col;
+  }
+
   given(index: number): boolean {
     const ast = this.asts[index];
     return ast !== undefined && ast.type !== 'missing';

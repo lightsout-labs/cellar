@@ -100,7 +100,25 @@ function equalsNumber(number: number, operator: string): Test {
  * to case. It never backtracks further than the last `*`, so that no
  * pattern takes more than the product of the two lengths.
  */
-function wildcards(text: string): (cell: string) => boolean {
+export function wildcards(text: string): (cell: string) => boolean {
+  const match = matcher(text);
+  return (cell) => match(cell.toLowerCase(), 0, false);
+}
+
+/**
+ * A test of whether a pattern with Excel's wildcards matches the start of
+ * text in lower case from a position, as `SEARCH` finds it.
+ */
+export function wildcardsAt(
+  text: string,
+): (subject: string, from: number) => boolean {
+  const match = matcher(text);
+  return (subject, from) => match(subject, from, true);
+}
+
+function matcher(
+  text: string,
+): (subject: string, start: number, prefix: boolean) => boolean {
   const kinds: ('*' | '?' | 'char')[] = [];
   const chars: string[] = [];
   for (let index = 0; index < text.length; index++) {
@@ -113,10 +131,10 @@ function wildcards(text: string): (cell: string) => boolean {
     }
     chars.push(char.toLowerCase());
   }
-  return (cell) => {
-    const subject = cell.toLowerCase();
-    let [at, from, star, resume] = [0, 0, -1, 0];
+  return (subject, start, prefix) => {
+    let [at, from, star, resume] = [0, start, -1, start];
     while (from < subject.length) {
+      if (prefix && at === kinds.length) return true;
       const kind = kinds[at];
       if (kind === '?' || (kind === 'char' && chars[at] === subject[from])) {
         at++;

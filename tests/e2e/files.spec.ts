@@ -87,7 +87,7 @@ test('a file with features Gridworks does not support opens and says what was dr
       sheets: [
         {
           name: 'Report',
-          rows: '<row r="1"><c r="A1"><v>3</v></c><c r="B1"><f>_xlfn.XLOOKUP(A1,C1:C2,D1:D2)</f><v>9</v></c></row>',
+          rows: '<row r="1"><c r="A1"><v>3</v></c><c r="B1"><f>OFFSET(A1,1,1)</f><v>9</v></c></row>',
         },
       ],
       parts: UNSUPPORTED_PARTS,

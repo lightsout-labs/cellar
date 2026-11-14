@@ -43,6 +43,9 @@ export type Result = Value | Reference;
  */
 export interface Args {
   readonly length: number;
+  /** Where the formula is, counted from zero. */
+  readonly row: number;
+  readonly col: number;
   /** Whether an argument is there, and not left out as in `ROUND(1,)`. */
   given(index: number): boolean;
   /** An argument evaluated, a reference left unread. */
@@ -93,6 +96,83 @@ export interface Spec {
   /** Whether files write it with `_xlfn.`, as a function newer than 2007. */
   readonly prefixed?: boolean;
   call(args: Args): Result;
+}
+
+/**
+ * The arguments of a function as one type each. A read that fails throws
+ * the error it gives, and `typed` makes that error the result.
+ */
+export interface Typed {
+  readonly args: Args;
+  /** The text an argument stands for, as `&` reads it; `fallback` when not there. */
+  text(index: number, fallback?: string): string;
+  /** The number an argument stands for, as arithmetic reads it. */
+  number(index: number, fallback?: number): number;
+  /** The number of an argument without its fraction. */
+  integer(index: number, fallback?: number): number;
+  boolean(index: number, fallback?: boolean): boolean;
+}
+
+/** A function of `min` to `max` arguments, each read as one type. */
+export function typed(
+  min: number,
+  max: number,
+  fn: (read: Typed) => Result,
+  prefixed?: boolean,
+): Spec {
+  return {
+    min,
+    max,
+    ...(prefixed && { prefixed }),
+    call(args) {
+      try {
+        return fn(new Reader(args));
+      } catch (thrown) {
+        if (thrown instanceof Failure) return thrown.error;
+        throw thrown;
+      }
+    },
+  };
+}
+
+class Failure {
+  constructor(readonly error: ErrorValue) {}
+}
+
+/** Gives the result of a typed function: `error` instead of anything else. */
+export function fail(error: ErrorValue): never {
+  throw new Failure(error);
+}
+
+class Reader implements Typed {
+  constructor(readonly args: Args) {}
+
+  private read<T>(
+    index: number,
+    fallback: T | undefined,
+    convert: (value: Exclude<Value, ErrorValue>) => T | ErrorValue,
+  ): T {
+    if (index >= this.args.length && fallback !== undefined) return fallback;
+    const value = this.args.value(index);
+    const result = isError(value) ? value : convert(value);
+    return isError(result) ? fail(result) : result;
+  }
+
+  text(index: number, fallback?: string): string {
+    return this.read(index, fallback, toText);
+  }
+
+  number(index: number, fallback?: number): number {
+    return this.read(index, fallback, toNumber);
+  }
+
+  integer(index: number, fallback?: number): number {
+    return Math.trunc(this.number(index, fallback));
+  }
+
+  boolean(index: number, fallback?: boolean): boolean {
+    return this.read(index, fallback, toBoolean);
+  }
 }
 
 /**
@@ -170,4 +250,22 @@ export function power(a: number, b: number): number | ErrorValue {
   if (a === 0 && b === 0) return NUM;
   if (a === 0 && b < 0) return DIV0;
   return a ** b;
+}
+
+/** A sheet name as a reference writes it: quoted unless it is a plain name. */
+export function quoteSheetName(name: string): string {
+  const plain =
+    /^[A-Za-z_][\w.]*$/.test(name) &&
+    !/^[A-Za-z]{1,3}\d+$/.test(name) &&
+    !/^(TRUE|FALSE)$/i.test(name);
+  return plain ? name : `'${name.replaceAll("'", "''")}'`;
+}
+
+/** The letters of a column, counted from zero: `A`, ..., `Z`, `AA`, ... */
+export function columnName(col: number): string {
+  let name = '';
+  for (let n = col + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
+  }
+  return name;
 }
