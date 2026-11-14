@@ -358,7 +358,8 @@ Notes:
 
 ## S08: Opening and saving XLSX files: values, formulas and sheets
 
-Status: In progress
+Status: Done
+PR: #12
 
 Acceptance criteria:
 - The user can open an `.xlsx` file from disk and sees its sheets, values and
