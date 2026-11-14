@@ -57,9 +57,8 @@ export function startAutosave(workbook: Workbook, store: Store): Autosave {
  * the changes recorded after it replayed.
  */
 export function restoreWorkbook(stored: Stored | null): Workbook {
-  const workbook = stored?.snapshot
-    ? Workbook.fromSnapshot(stored.snapshot)
-    : createWorkbook();
-  for (const command of stored?.changes ?? []) workbook.execute(command);
-  return workbook;
+  return Workbook.fromSnapshot(
+    stored?.snapshot ?? createWorkbook().toSnapshot(),
+    stored?.changes,
+  );
 }

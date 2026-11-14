@@ -78,6 +78,11 @@
   color: var(--text);
 }
 
+/* The panels of the other tabs. */
+.ribbonPanel[hidden] {
+  display: none;
+}
+
 .group {
   display: flex;
   align-items: center;

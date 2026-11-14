@@ -37,6 +37,16 @@ export function single(cell: CellPosition): Selection {
 }
 
 /**
+ * Ranges selected, the top-left cell of the last one active, as after an
+ * undo.
+ */
+export function covering(ranges: readonly Range[]): Selection {
+  const { top, left, bottom, right } = ranges[ranges.length - 1]!;
+  const active = { row: top, col: left };
+  return { ranges, active, anchor: active, focus: { row: bottom, col: right } };
+}
+
+/**
  * The selection with its last range stretched from its anchor to a new
  * focus, the active cell unchanged: Shift with a key or a click.
  */

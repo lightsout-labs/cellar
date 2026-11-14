@@ -60,7 +60,7 @@ because a requirement needs it.
 
 | Module | Interface | Hides |
 |---|---|---|
-| `engine/workbook` | `execute(command)`, `undo()`, `redo()`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot()` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
+| `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, sheet and name lists, layout), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
 | `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `shift(ast, move)`, `functions` (name, argument hints) | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete. |
 | `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
 | `engine/io` | `readXlsx(bytes)`, `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | The mapping between a workbook snapshot and ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
@@ -80,9 +80,19 @@ Boundaries, enforced by the build so that R50 and R51 cannot erode:
 
 Decisions that are cheap to reverse, with their reasons:
 
-- **Every edit is a command.** The workbook returns the inverse of each
-  command it executes, so undo covers every change by construction (R5)
-  rather than feature by feature.
+- **Every edit is a command.** Before it runs a command, the workbook
+  records the contents and styles of the cells the command will change as
+  a `restore` command, which puts them back, so undo covers every change by
+  construction (R5) rather than feature by feature. Undo runs that
+  command and records its own reverse for redo; the listeners receive it
+  like any other, so storage records an undo as a change. The workbook
+  keeps the last 100 changes, Excel's number, and a new change forgets
+  what could be redone. A workbook opened with its recorded changes
+  replayed (`fromSnapshot(snapshot, changes)`) starts with nothing to
+  undo, as the history is not stored.
+- **Window shortcuts are handled on the window**, not by the grid, so that
+  Ctrl/Cmd+Z and Ctrl/Cmd+Y work after a click on the ribbon too. During an
+  entry they are left to the editor, which undoes its own typing.
 - **Cells are stored by column**, as arrays of values and of style
   identifiers, with formulas in a sparse map. Ten million populated cells
   (R45) do not fit in memory as one object each.

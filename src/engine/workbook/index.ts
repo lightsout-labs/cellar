@@ -28,7 +28,37 @@ export type Command =
       readonly type: 'clear';
       readonly sheet: string;
       readonly ranges: readonly Range[];
+    }
+  | {
+      /**
+       * Makes ranges hold exactly the cells listed, with their contents and
+       * styles, and nothing else: how the workbook undoes and redoes.
+       */
+      readonly type: 'restore';
+      readonly sheet: string;
+      readonly ranges: readonly Range[];
+      readonly cells: readonly CellContents[];
     };
+
+/** A cell's contents and style, as a `restore` command puts them back. */
+export interface CellContents {
+  readonly row: number;
+  readonly col: number;
+  readonly value: Constant;
+  /** The formula with its leading `=`, in place of the value. */
+  readonly formula?: string;
+  /** Absent for the default style. */
+  readonly style?: Style;
+}
+
+/** The cells that an undo or a redo changed. */
+export interface Change {
+  readonly sheet: string;
+  readonly ranges: readonly Range[];
+}
+
+/** How many changes can be undone (R5). */
+const UNDO_LIMIT = 100;
 
 /** The number of rows and columns of every sheet (R1). */
 export const SHEET_ROWS = 100_000;
@@ -121,6 +151,9 @@ interface Sheet extends SheetInfo {
   readonly results: Map<string, Value>;
 }
 
+/** A command that undoes or redoes another. */
+type Restore = Extract<Command, { type: 'restore' }>;
+
 const key = (row: number, col: number) => `${row},${col}`;
 
 /** The name of a cell, as in `A1`. */
@@ -143,6 +176,10 @@ export class Workbook {
   private readonly calculating = new Set<Formula>();
   /** The index of each style in `styles`, by its JSON text. */
   private readonly styleIndex: Map<string, number>;
+  /** The commands that undo the last changes, the latest last. */
+  private readonly undoList: Restore[] = [];
+  /** The commands that redo the changes undone, the latest undone last. */
+  private readonly redoList: Restore[] = [];
 
   private constructor(
     private readonly name: string,
@@ -154,7 +191,14 @@ export class Workbook {
     );
   }
 
-  static fromSnapshot(snapshot: Snapshot): Workbook {
+  /**
+   * The workbook of a snapshot, with `changes` made after it replayed.
+   * There is nothing to undo in it.
+   */
+  static fromSnapshot(
+    snapshot: Snapshot,
+    changes: readonly Command[] = [],
+  ): Workbook {
     if (snapshot.version !== 1) {
       throw new Error(`Unknown snapshot version: ${String(snapshot.version)}`);
     }
@@ -174,7 +218,13 @@ export class Workbook {
         results: new Map(),
       };
     });
-    return new Workbook(snapshot.name, sheets, snapshot.styles ?? [{}]);
+    const workbook = new Workbook(
+      snapshot.name,
+      sheets,
+      snapshot.styles ?? [{}],
+    );
+    for (const command of changes) workbook.apply(command);
+    return workbook;
   }
 
   toSnapshot(): Snapshot {
@@ -204,19 +254,31 @@ export class Workbook {
     return this.sheetList.map(({ id, name }) => ({ id, name }));
   }
 
+  /**
+   * Makes a change, which can then be undone; what could be redone is
+   * forgotten.
+   */
   execute(command: Command): void {
-    const sheet = this.sheet(command.sheet);
-    let executed = command;
-    if (command.type === 'setCell') {
-      const year = this.setCell(sheet, command);
-      // Listeners that record the command replay it with the same date.
-      if (year !== undefined) executed = { ...command, year };
-    } else {
-      for (const range of command.ranges) clear(sheet, range);
-    }
-    // Any formula may read the changed cells, so every result is stale.
-    for (const each of this.sheetList) each.results.clear();
-    for (const listener of this.listeners) listener(executed);
+    this.redoList.length = 0;
+    this.apply(command, this.undoList);
+  }
+
+  /** Undoes the last change, and gives the cells it changed. */
+  undo(): Change | null {
+    return this.reverse(this.undoList, this.redoList);
+  }
+
+  /** Redoes the last change undone, and gives the cells it changed. */
+  redo(): Change | null {
+    return this.reverse(this.redoList, this.undoList);
+  }
+
+  get canUndo(): boolean {
+    return this.undoList.length > 0;
+  }
+
+  get canRedo(): boolean {
+    return this.redoList.length > 0;
   }
 
   cell(sheetId: string, row: number, col: number): Cell {
@@ -310,6 +372,119 @@ export class Workbook {
   subscribe(listener: (command: Command) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Runs the last command of `from`, and keeps its reverse in `to`. */
+  private reverse(from: Restore[], to: Restore[]): Change | null {
+    const command = from.pop();
+    if (!command) return null;
+    this.apply(command, to);
+    return { sheet: command.sheet, ranges: command.ranges };
+  }
+
+  /**
+   * Runs a command, keeps the command that reverses it in `history`, and
+   * then tells the listeners.
+   */
+  private apply(command: Command, history?: Restore[]): void {
+    const sheet = this.sheet(command.sheet);
+    const ranges =
+      command.type === 'setCell'
+        ? [
+            {
+              top: command.row,
+              left: command.col,
+              bottom: command.row,
+              right: command.col,
+            },
+          ]
+        : command.ranges;
+    const reverse: Restore = {
+      type: 'restore',
+      sheet: sheet.id,
+      ranges,
+      cells: this.contents(sheet, ranges),
+    };
+    let executed = command;
+    if (command.type === 'setCell') {
+      const year = this.setCell(sheet, command);
+      // Listeners that record the command replay it with the same date.
+      if (year !== undefined) executed = { ...command, year };
+    } else if (command.type === 'clear') {
+      for (const range of command.ranges) clear(sheet, range);
+    } else {
+      this.restore(sheet, command);
+    }
+    // Any formula may read the changed cells, so every result is stale.
+    for (const each of this.sheetList) each.results.clear();
+    if (history) {
+      history.push(reverse);
+      if (history.length > UNDO_LIMIT) history.shift();
+    }
+    for (const listener of this.listeners) listener(executed);
+  }
+
+  /** The cells of ranges that have contents or a style other than the default. */
+  private contents(sheet: Sheet, ranges: readonly Range[]): CellContents[] {
+    const cells = new Map<string, CellContents>();
+    for (const { top, left, bottom, right } of ranges) {
+      const last = Math.min(
+        right,
+        Math.max(sheet.columns.length, sheet.styleIds.length) - 1,
+      );
+      for (let col = left; col <= last; col++) {
+        const values = sheet.columns[col] ?? [];
+        const ids = sheet.styleIds[col] ?? [];
+        const end = Math.min(bottom, Math.max(values.length, ids.length) - 1);
+        for (let row = top; row <= end; row++) {
+          const value = values[row] ?? null;
+          const id = ids[row] ?? 0;
+          if (value === null && id === 0) continue;
+          cells.set(key(row, col), {
+            row,
+            col,
+            value,
+            ...(id !== 0 && { style: this.styles[id] }),
+          });
+        }
+      }
+      for (const [cellKey, { row, col, text }] of sheet.formulas) {
+        if (row < top || row > bottom || col < left || col > right) continue;
+        const id = sheet.styleIds[col]?.[row] ?? 0;
+        cells.set(cellKey, {
+          row,
+          col,
+          value: null,
+          formula: text,
+          ...(id !== 0 && { style: this.styles[id] }),
+        });
+      }
+    }
+    return [...cells.values()];
+  }
+
+  /** Empties the ranges of a `restore`, styles too, and fills in its cells. */
+  private restore(sheet: Sheet, { ranges, cells }: Restore): void {
+    for (const range of ranges) {
+      clear(sheet, range);
+      const { top, left, bottom, right } = range;
+      const last = Math.min(right, sheet.styleIds.length - 1);
+      for (let col = left; col <= last; col++) {
+        const ids = sheet.styleIds[col];
+        if (!ids) continue;
+        const end = Math.min(bottom, ids.length - 1);
+        for (let row = top; row <= end; row++) ids[row] = 0;
+      }
+    }
+    for (const { row, col, value, formula, style } of cells) {
+      if (formula !== undefined) {
+        // It was stored as a formula, so it parses.
+        const ast = parse(formula.slice(1))!;
+        sheet.formulas.set(key(row, col), { row, col, text: formula, ast });
+      }
+      (sheet.columns[col] ??= [])[row] = value;
+      if (style) (sheet.styleIds[col] ??= [])[row] = this.styleId(style);
+    }
   }
 
   /** Sets a cell, and gives the year it gave a date typed without one. */

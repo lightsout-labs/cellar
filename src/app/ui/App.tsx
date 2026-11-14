@@ -1,7 +1,7 @@
 import { Provider as TooltipProvider } from '@radix-ui/react-tooltip';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import type { Workbook } from '../../engine/workbook';
-import { Grid } from '../grid/Grid';
+import { Grid, MAC } from '../grid/Grid';
 import { View } from '../grid/view';
 import type { Platform } from '../platform';
 import { restoreWorkbook, startAutosave } from './autosave';
@@ -9,6 +9,7 @@ import { Translation } from './controls';
 import { startingLanguage, translator, type Language } from './i18n';
 import { Ribbon } from './Ribbon';
 import { FormulaBar, SheetTabs, StatusBar } from './Shell';
+import { shortcut } from './shortcuts';
 import styles from './Shell.module.css';
 import { startingTheme, type Theme } from './theme';
 
@@ -65,12 +66,38 @@ export function App({ platform }: { platform: Platform }) {
     };
   }, [platform, workbook]);
 
+  // Undo and redo work wherever the focus is, but an entry being typed
+  // undoes its own typing.
+  useEffect(() => {
+    if (!open) return;
+    const { view } = open;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (view.state.entry) return;
+      const command = shortcut(
+        {
+          key: event.key,
+          shift: event.shiftKey,
+          ctrl: event.ctrlKey,
+          meta: event.metaKey,
+          alt: event.altKey,
+        },
+        MAC,
+      );
+      if (!command) return;
+      event.preventDefault();
+      view[command]();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+
   if (!open) return null;
   return (
     <Translation value={translator(language)}>
       <TooltipProvider delayDuration={400} disableHoverableContent>
         <div className={styles.app}>
           <Ribbon
+            {...open}
             language={language}
             onLanguage={(language: Language) => {
               setLanguage(language);
