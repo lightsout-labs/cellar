@@ -53,7 +53,8 @@ Notes:
 
 ## S02: The application shell, in two languages and two themes
 
-Status: In progress
+Status: Done
+PR: #4
 
 Acceptance criteria:
 - The window shows a tabbed ribbon, a formula bar with a name box, the grid,
