@@ -1,9 +1,22 @@
 import { editText, formatValue, GENERAL, parseInput } from '../format';
-import { columnName, evaluate, parse, type Ast } from '../formula';
-import { VALUE_ERROR, type Value } from '../value';
+import { columnName, parse, print, shift, type Ast } from '../formula';
+import type { Value } from '../value';
+import {
+  Calculation,
+  emptySheet,
+  key,
+  place,
+  type Constant,
+  type Sheet,
+} from './calc';
 
 export type { Value } from '../value';
-export { columnName } from '../formula';
+export {
+  columnName,
+  quoteSheetName,
+  SHEET_COLUMNS,
+  SHEET_ROWS,
+} from '../formula';
 
 /** An edit to the workbook. Rows and columns count from zero. */
 export type Command =
@@ -104,10 +117,6 @@ export interface Change {
 /** How many changes can be undone (R5). */
 const UNDO_LIMIT = 100;
 
-/** The number of rows and columns of every sheet (R1). */
-export const SHEET_ROWS = 100_000;
-export const SHEET_COLUMNS = 100;
-
 /** A rectangle of cells, its bounds included. */
 export interface Range {
   readonly top: number;
@@ -149,9 +158,6 @@ export interface SheetInfo {
   readonly color?: string;
 }
 
-/** A stored value: formulas keep their text, not their result. */
-type Constant = number | string | boolean | null;
-
 export interface SheetSnapshot extends SheetInfo {
   /** Values by column, then by row; `null` where a cell is empty. */
   readonly columns: Constant[][];
@@ -180,29 +186,7 @@ export interface Snapshot {
   readonly styles?: Style[];
 }
 
-interface Formula {
-  readonly row: number;
-  readonly col: number;
-  readonly text: string;
-  readonly ast: Ast;
-}
-
-interface Sheet {
-  readonly id: string;
-  name: string;
-  color?: string;
-  /** Values by column, then by row. Both levels are sparse. */
-  readonly columns: Constant[][];
-  readonly formulas: Map<string, Formula>;
-  /** Indexes in the workbook's styles by column, then by row. Both sparse. */
-  readonly styleIds: number[][];
-  /** Results of the formulas read since the last change. */
-  readonly results: Map<string, Value>;
-}
-
 type Restore = Extract<Command, { type: 'restore' }>;
-
-const key = (row: number, col: number) => `${row},${col}`;
 
 /** The name of a cell, as in `A1`. */
 export function cellName(row: number, col: number): string {
@@ -220,8 +204,8 @@ export function createWorkbook(): Workbook {
 
 export class Workbook {
   private readonly listeners = new Set<(command: Command) => void>();
-  /** Formulas being calculated now, to detect ones that read each other. */
-  private readonly calculating = new Set<Formula>();
+  /** The formulas, what they read, and their results. */
+  private readonly calc = new Calculation(() => this.sheetList);
   /** The index of each style in `styles`, by its JSON text. */
   private readonly styleIndex: Map<string, number>;
   /** The commands that undo the last changes, the latest last. */
@@ -256,6 +240,7 @@ export class Workbook {
       sheets,
       snapshot.styles ?? [{}],
     );
+    workbook.calc.rebuild();
     for (const command of changes) workbook.apply(command);
     return workbook;
   }
@@ -320,9 +305,22 @@ export class Workbook {
     return this.redoList.length > 0;
   }
 
+  /** How many formula results have been calculated, to measure recalculation. */
+  get calculations(): number {
+    return this.calc.calculations;
+  }
+
+  /** A cell of a circular reference, or `null` when there is none (R15). */
+  circularReference(): { sheet: string; row: number; col: number } | null {
+    const formula = this.calc.circularReference();
+    return formula
+      ? { sheet: formula.sheet.id, row: formula.row, col: formula.col }
+      : null;
+  }
+
   cell(sheetId: string, row: number, col: number): Cell {
     const sheet = this.sheet(sheetId);
-    const value = this.value(sheet, row, col);
+    const value = this.calc.cell(sheet, row, col);
     const formula =
       sheet.formulas.size === 0
         ? null
@@ -378,7 +376,7 @@ export class Workbook {
       }
       for (const { row, col } of sheet.formulas.values()) {
         if (row >= top && row <= bottom && col >= left && col <= right) {
-          add(this.value(sheet, row, col));
+          add(this.calc.cell(sheet, row, col));
         }
       }
     }
@@ -424,14 +422,23 @@ export class Workbook {
    * the listeners, and gives what it changed.
    */
   private apply(command: Command, history?: Command[]): Change {
-    const { executed, reverse, change } =
+    let applied: Applied;
+    if (
       command.type === 'setCell' ||
       command.type === 'clear' ||
       command.type === 'restore'
-        ? this.changeCells(command)
-        : this.changeSheets(command);
-    // Any formula may read the changed cells, so every result is stale.
-    for (const each of this.sheetList) each.results.clear();
+    ) {
+      applied = this.changeCells(command);
+      this.calc.changed(this.sheet(command.sheet), applied.change.ranges);
+      this.calc.settle();
+    } else {
+      applied = this.changeSheets(command);
+      // References to sheets by name may now find another sheet, or none.
+      if (command.type !== 'setSheet' || command.name !== undefined) {
+        this.calc.rebuild();
+      }
+    }
+    const { executed, reverse, change } = applied;
     if (history) {
       history.push(reverse);
       if (history.length > UNDO_LIMIT) history.shift();
@@ -467,7 +474,7 @@ export class Workbook {
       // Listeners that record the command replay it with the same date.
       if (year !== undefined) executed = { ...command, year };
     } else if (command.type === 'clear') {
-      for (const range of command.ranges) clear(sheet, range);
+      for (const range of command.ranges) this.clear(sheet, range);
     } else {
       this.restore(sheet, command);
     }
@@ -531,7 +538,7 @@ export class Workbook {
           ...(color !== undefined && { color: sheet.color ?? null }),
           ...(index !== undefined && { index: list.indexOf(sheet) }),
         };
-        if (name !== undefined) sheet.name = name;
+        if (name !== undefined) this.rename(sheet, name);
         if (color === null) delete sheet.color;
         else if (color !== undefined) sheet.color = color;
         if (index !== undefined) {
@@ -541,6 +548,21 @@ export class Workbook {
         return { executed: command, reverse, change: shown(sheet.id) };
       }
     }
+  }
+
+  /** Renames a sheet, and the references to it in every formula. */
+  private rename(sheet: Sheet, name: string): void {
+    const move = { type: 'renameSheet', from: sheet.name, to: name } as const;
+    for (const each of this.sheetList) {
+      const moved = [...each.formulas.values()].flatMap((formula) => {
+        const ast = shift(formula.ast, move);
+        return ast === formula.ast ? [] : [{ ...formula, ast }];
+      });
+      for (const { row, col, ast } of moved) {
+        this.calc.put(each, row, col, `=${print(ast)}`, ast);
+      }
+    }
+    sheet.name = name;
   }
 
   /** Puts a sheet at a place in the tab order, kept within the tabs. */
@@ -619,7 +641,7 @@ export class Workbook {
   /** Empties the ranges of a `restore`, styles too, and fills in its cells. */
   private restore(sheet: Sheet, { ranges, cells }: Restore): void {
     for (const range of ranges) {
-      clear(sheet, range);
+      this.clear(sheet, range);
       const { top, left, bottom, right } = range;
       const last = Math.min(right, sheet.styleIds.length - 1);
       for (let col = left; col <= last; col++) {
@@ -634,7 +656,7 @@ export class Workbook {
         const ast = parse(formula.slice(1));
         // A command read back from storage may be damaged.
         if (!ast) throw new Error(`Invalid formula in restore: ${formula}`);
-        sheet.formulas.set(key(row, col), { row, col, text: formula, ast });
+        this.calc.put(sheet, row, col, formula, ast);
       }
       (sheet.columns[col] ??= [])[row] = value;
       if (style) (sheet.styleIds[col] ??= [])[row] = this.styleId(style);
@@ -647,14 +669,20 @@ export class Workbook {
     command: Extract<Command, { type: 'setCell' }>,
   ): number | undefined {
     const { row, col, input } = command;
-    const ast = input.startsWith('=') ? parse(input.slice(1)) : null;
+    const parsed = input.startsWith('=') ? parse(input.slice(1)) : null;
     const column = (sheet.columns[col] ??= []);
-    if (ast) {
-      sheet.formulas.set(key(row, col), { row, col, text: input, ast });
+    if (parsed) {
+      // Sheet names are written as the sheets have them, as in Excel.
+      const ast = this.sheetList.reduce(
+        (ast: Ast, { name }) =>
+          shift(ast, { type: 'renameSheet', from: name, to: name }),
+        parsed,
+      );
+      this.calc.put(sheet, row, col, `=${print(ast)}`, ast);
       column[row] = null;
       return undefined;
     }
-    sheet.formulas.delete(key(row, col));
+    this.calc.remove(sheet, row, col);
     const { value, format, year } = parseInput(input, command.year);
     column[row] = value;
     if (format === undefined) return year;
@@ -663,6 +691,23 @@ export class Workbook {
     const style = { ...this.styles[ids[row] ?? 0], numberFormat: format };
     ids[row] = this.styleId(style);
     return year;
+  }
+
+  /** Empties the cells of a range of a sheet, leaving their styles. */
+  private clear(sheet: Sheet, range: Range): void {
+    const { top, left, bottom, right } = range;
+    const last = Math.min(right, sheet.columns.length - 1);
+    for (let col = left; col <= last; col++) {
+      const column = sheet.columns[col];
+      if (!column) continue;
+      const end = Math.min(bottom, column.length - 1);
+      for (let row = top; row <= end; row++) column[row] = null;
+    }
+    const inside = [...sheet.formulas.values()].filter(
+      ({ row, col }) =>
+        row >= top && row <= bottom && col >= left && col <= right,
+    );
+    for (const { row, col } of inside) this.calc.remove(sheet, row, col);
   }
 
   /** The index of a style in the table, added if it is new. */
@@ -681,24 +726,6 @@ export class Workbook {
     if (!sheet) throw new Error(`No such sheet: ${id}`);
     return sheet;
   }
-
-  private value(sheet: Sheet, row: number, col: number): Value {
-    // Most sheets read are plain values; their key is never built.
-    if (sheet.formulas.size === 0) return sheet.columns[col]?.[row] ?? null;
-    const cellKey = key(row, col);
-    const formula = sheet.formulas.get(cellKey);
-    if (!formula) return sheet.columns[col]?.[row] ?? null;
-    const known = sheet.results.get(cellKey);
-    if (known !== undefined) return known;
-    if (this.calculating.has(formula)) return VALUE_ERROR;
-    this.calculating.add(formula);
-    const result = evaluate(formula.ast, {
-      cell: (r, c) => this.value(sheet, r, c),
-    });
-    this.calculating.delete(formula);
-    sheet.results.set(cellKey, result);
-    return result;
-  }
 }
 
 /** A command, as its listeners get it, and the command that reverses it. */
@@ -710,21 +737,19 @@ interface Applied {
 
 /** A sheet of the workbook, made from a snapshot of it. */
 function sheetOf(snapshot: SheetSnapshot): Sheet {
-  const formulas = new Map<string, Formula>();
+  const sheet = emptySheet(
+    snapshot.id,
+    snapshot.name,
+    snapshot.columns.map((column) => [...column]),
+    (snapshot.styleIds ?? []).map((column) => [...column]),
+  );
+  if (snapshot.color !== undefined) sheet.color = snapshot.color;
   for (const [row, col, text] of snapshot.formulas) {
     const ast = parse(text.slice(1));
     if (!ast) throw new Error(`Invalid formula in snapshot: ${text}`);
-    formulas.set(key(row, col), { row, col, text, ast });
+    place(sheet, row, col, text, ast);
   }
-  return {
-    id: snapshot.id,
-    name: snapshot.name,
-    ...(snapshot.color !== undefined && { color: snapshot.color }),
-    columns: snapshot.columns.map((column) => [...column]),
-    formulas,
-    styleIds: (snapshot.styleIds ?? []).map((column) => [...column]),
-    results: new Map(),
-  };
+  return sheet;
 }
 
 function snapshotOf(sheet: Sheet): SheetSnapshot {
@@ -743,20 +768,4 @@ function snapshotOf(sheet: Sheet): SheetSnapshot {
       Array.from(column ?? [], (id) => id ?? 0),
     ),
   };
-}
-
-/** Empties the cells of a range of a sheet, leaving their styles. */
-function clear(sheet: Sheet, { top, left, bottom, right }: Range): void {
-  const last = Math.min(right, sheet.columns.length - 1);
-  for (let col = left; col <= last; col++) {
-    const column = sheet.columns[col];
-    if (!column) continue;
-    const end = Math.min(bottom, column.length - 1);
-    for (let row = top; row <= end; row++) column[row] = null;
-  }
-  for (const [cellKey, { row, col }] of sheet.formulas) {
-    if (row >= top && row <= bottom && col >= left && col <= right) {
-      sheet.formulas.delete(cellKey);
-    }
-  }
 }

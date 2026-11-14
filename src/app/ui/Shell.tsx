@@ -6,7 +6,7 @@ import { keyAction } from '../grid/keys';
 import { ZOOM_MAX, ZOOM_MIN, type View } from '../grid/view';
 import { Tooltip, useTranslation } from './controls';
 import styles from './Shell.module.css';
-import { summarize } from './summary';
+import { circularCell, summarize } from './summary';
 
 const ICON_SIZE = 14;
 const ZOOM_STEP = 0.1;
@@ -76,8 +76,8 @@ export function FormulaBar({
 }
 
 /**
- * Whether the grid is waiting or an entry is being typed, the average,
- * count and sum of the selected cells, and the zoom.
+ * Whether the grid is waiting or an entry is being typed, a circular
+ * reference, the average, count and sum of the selected cells, and the zoom.
  */
 export function StatusBar({
   workbook,
@@ -99,6 +99,11 @@ export function StatusBar({
     // `revision` stands for the contents of the workbook.
     [workbook, sheet, selection, revision],
   );
+  const circular = useMemo(
+    () => circularCell(workbook, sheet),
+    // `revision` stands for the contents of the workbook.
+    [workbook, sheet, revision],
+  );
   const percent = Math.round(zoom * 100);
   return (
     <footer className={styles.statusBar}>
@@ -112,6 +117,7 @@ export function StatusBar({
         )}
       </span>
       {endMode && <span>{t('status.endMode')}</span>}
+      {circular && <span>{`${t('status.circular')}: ${circular}`}</span>}
       <div className={styles.summary} role="group" aria-label={t('summary')}>
         {summary?.average != null && (
           <span>{`${t('summary.average')}: ${summary.average}`}</span>

@@ -122,3 +122,44 @@ export async function cellBackground(
     return [data[0]!, data[1]!, data[2]!];
   }, rect);
 }
+
+/**
+ * Stores a workbook of one sheet as the app stores it, and reloads the page
+ * so that the app opens it. The test plays the platform here.
+ */
+export async function openStoredSheet(
+  page: Page,
+  sheet: { columns: unknown[][]; formulas: [number, number, string][] },
+): Promise<void> {
+  await page.evaluate(
+    (sheet) =>
+      new Promise<void>((resolve, reject) => {
+        // eslint-disable-next-line no-restricted-globals
+        const request = indexedDB.open('cellar');
+        request.onerror = () => reject(request.error!);
+        request.onsuccess = () => {
+          const transaction = request.result.transaction(
+            ['workbooks', 'sheets'],
+            'readwrite',
+          );
+          transaction.objectStore('workbooks').put({
+            id: 'default',
+            name: 'Big',
+            modified: Date.now(),
+            version: 1,
+            sheetIds: ['sheet1'],
+          });
+          transaction.objectStore('sheets').put({
+            workbook: 'default',
+            id: 'sheet1',
+            name: 'Sheet1',
+            ...sheet,
+          });
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error!);
+        };
+      }),
+    sheet,
+  );
+  await page.reload();
+}

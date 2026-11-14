@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { clickCell, enter, expectCell, isCellPainted, openApp } from './grid';
+import {
+  clickCell,
+  enter,
+  expectCell,
+  isCellPainted,
+  openApp,
+  openStoredSheet,
+} from './grid';
 
 // Also the smoke test that the deployment runs against the live address.
 test('a formula typed in the grid shows its result @smoke', async ({
@@ -27,4 +34,78 @@ test('Escape abandons an entry', async ({ page }) => {
   await page.keyboard.type('7');
   await page.keyboard.press('Escape');
   await expectCell(page, 0, 0, 'A1');
+});
+
+test('formulas combine operators, ranges and functions, and show errors', async ({
+  page,
+}) => {
+  await openApp(page);
+  await clickCell(page, 0, 0);
+  await enter(page, '2');
+  await enter(page, '3');
+  await enter(page, '=SUM(A1:A2)*2^2');
+  await enter(page, '=IF(A3>10,"big","small")&"!"');
+  await enter(page, '=A1/0');
+  await enter(page, '=A5+1');
+
+  await expectCell(page, 2, 0, 'A3 20');
+  await expectCell(page, 3, 0, 'A4 big!');
+  await expectCell(page, 4, 0, 'A5 #DIV/0!');
+  await expectCell(page, 5, 0, 'A6 #DIV/0!');
+
+  // A change reaches the formulas that depend on it, directly or not.
+  await clickCell(page, 0, 0);
+  await enter(page, '0.5');
+  await expectCell(page, 2, 0, 'A3 14');
+  await expectCell(page, 3, 0, 'A4 big!');
+});
+
+test('a circular reference is reported, and the app keeps working', async ({
+  page,
+}) => {
+  await openApp(page);
+  const statusBar = page.getByRole('contentinfo');
+  await clickCell(page, 0, 0);
+  await enter(page, '=B1+1');
+  await clickCell(page, 0, 1);
+  await enter(page, '=A1+1');
+  await expect(statusBar).toContainText('Circular References: B1');
+  await expectCell(page, 0, 0, 'A1 0');
+
+  await clickCell(page, 0, 1);
+  await enter(page, '5');
+  await expect(statusBar).not.toContainText('Circular References');
+  await expectCell(page, 0, 0, 'A1 6');
+});
+
+test('a change that 100,000 formulas depend on shows within a second, and input goes on', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await openApp(page);
+  const rows = 100_000;
+  await openStoredSheet(page, {
+    columns: [[1]],
+    formulas: Array.from({ length: rows }, (_, row) => [
+      row,
+      1,
+      row === 0 ? '=A1+1' : `=B${row}+1`,
+    ]),
+  });
+  await expectCell(page, 0, 1, `B1 2`);
+
+  await clickCell(page, 0, 0);
+  await page.keyboard.type('2');
+  const start = Date.now();
+  await page.keyboard.press('Enter');
+  // Typed at once, while the change is still taking effect.
+  await enter(page, '7');
+  await expectCell(page, 0, 1, 'B1 3');
+  expect(Date.now() - start).toBeLessThan(1000);
+  await expectCell(page, 1, 0, 'A2 7');
+
+  // The end of the chain, which depends on every formula before it.
+  await clickCell(page, 0, 1);
+  await page.keyboard.press('ControlOrMeta+ArrowDown');
+  await expect(page.getByRole('status')).toHaveText(`B${rows} ${rows + 2}`);
 });
