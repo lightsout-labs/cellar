@@ -6,6 +6,7 @@ export type Value = number | string | boolean | null | ErrorValue;
 
 export const VALUE_ERROR: ErrorValue = { error: '#VALUE!' };
 
-export function isError(value: Value): value is ErrorValue {
-  return typeof value === 'object' && value !== null;
+/** Whether a value, or anything a function gives instead, is an error. */
+export function isError(value: unknown): value is ErrorValue {
+  return typeof value === 'object' && value !== null && 'error' in value;
 }

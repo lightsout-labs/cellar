@@ -260,6 +260,32 @@ describe('writeXlsx', () => {
       }
     }
   });
+
+  it('writes newer functions with the prefix Excel expects, and reads them back', async () => {
+    const snapshot: Snapshot = {
+      version: 1,
+      name: 'Prefixes',
+      sheets: [
+        {
+          id: 'sheet1',
+          name: 'Sheet1',
+          columns: [[1, 3]],
+          formulas: [[0, 1, '=IFS(A1>0,STDEV.S(A1:A2))+SUM(A1:A2)']],
+        },
+      ],
+    };
+    const bytes = await writeXlsx(snapshot);
+    const zip = await JSZip.loadAsync(bytes);
+    const sheet = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    expect(sheet).toContain(
+      '_xlfn.IFS(A1&gt;0,_xlfn.STDEV.S(A1:A2))+SUM(A1:A2)',
+    );
+    const { workbook, snapshot: read } = await open(bytes);
+    expect(cellOf(workbook, read.sheets[0]!.id, 'B1')).toMatchObject({
+      value: Math.SQRT2 + 4,
+      formula: '=IFS(A1>0,STDEV.S(A1:A2))+SUM(A1:A2)',
+    });
+  });
 });
 
 /**

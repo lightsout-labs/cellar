@@ -398,7 +398,7 @@ Notes:
 
 ## S09: Functions: math, statistics, logic and conditional totals
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The math and trigonometry functions return Excel's results for the examples
