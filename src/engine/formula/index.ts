@@ -709,6 +709,7 @@ function binary(operator: BinaryOperator, left: Value, right: Value): Value {
       break;
     default:
       if (a === 0 && b === 0) return NUM;
+      if (a === 0 && b < 0) return DIV0;
       result = a ** b;
   }
   return Number.isFinite(result) ? result : NUM;
@@ -730,8 +731,11 @@ function compare(left: Value, right: Value): number {
     const y = b.toLowerCase();
     return x < y ? -1 : x > y ? 1 : 0;
   }
-  return Number(a) - Number(b);
+  // Numbers are equal when they agree to the 15 digits Excel keeps.
+  return digits15(Number(a)) - digits15(Number(b));
 }
+
+const digits15 = (n: number) => Number(n.toPrecision(15));
 
 function emptyLike(value: Value): Value {
   if (typeof value === 'string') return '';
@@ -758,7 +762,7 @@ function toText(value: Exclude<Value, ErrorValue>): string {
   if (value === null) return '';
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
   if (typeof value === 'number') {
-    return String(Number(value.toPrecision(15))).toUpperCase();
+    return String(digits15(value)).toUpperCase();
   }
   return value;
 }
@@ -811,7 +815,11 @@ function aggregate(
 ): Implementation {
   return (args, context) => {
     const values = numbers(args, context);
-    return Array.isArray(values) ? combine(values) : values;
+    if (!Array.isArray(values)) return values;
+    const result = combine(values);
+    return typeof result === 'number' && !Number.isFinite(result)
+      ? NUM
+      : result;
   };
 }
 
@@ -852,16 +860,3 @@ const LIBRARY: Record<string, Implementation> = {
     return branch ? run(branch, context) : false;
   },
 };
-
-/** The functions, with a hint of their arguments, for autocomplete. */
-export const functions: readonly {
-  readonly name: string;
-  readonly hint: string;
-}[] = [
-  { name: 'AVERAGE', hint: 'AVERAGE(number1, [number2], ...)' },
-  { name: 'COUNT', hint: 'COUNT(value1, [value2], ...)' },
-  { name: 'IF', hint: 'IF(logical_test, [value_if_true], [value_if_false])' },
-  { name: 'MAX', hint: 'MAX(number1, [number2], ...)' },
-  { name: 'MIN', hint: 'MIN(number1, [number2], ...)' },
-  { name: 'SUM', hint: 'SUM(number1, [number2], ...)' },
-];

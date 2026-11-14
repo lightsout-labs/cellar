@@ -333,6 +333,28 @@ Acceptance criteria:
   results are correct within 1 second and the interface accepts input
   meanwhile. (R46)
 
+Notes:
+- `engine/formula` parses with a precedence climber over the text, with no
+  token list. Functions are a `LIBRARY` of implementations plus an `ARITY`
+  table that `parse` checks, so a known function with the wrong number of
+  arguments is not a formula (kept as text, as before). S09 adds functions
+  to both; an unknown name gives `#NAME?`. Functions receive unevaluated
+  arguments, and a range argument is a `Reference` read with
+  `context.cells` (non-empty values only, in no set order: lookups will
+  need an ordered read).
+- The sheet size constants now live in `engine/formula`; the workbook
+  re-exports them.
+- The dependency graph and calculation are `engine/workbook/calc.ts`. All
+  formula writes must go through `Calculation.put`/`remove` (or `place`
+  for a new sheet, followed by `rebuild`), or readers go stale.
+- References to sheets are by name. Rename rewrites them with
+  `shift(ast, { type: 'renameSheet' })`; a deleted sheet's references give
+  `#REF!` and keep their text. Moving rows and columns, in a later slice, should
+  extend `Move` and `shift`.
+- `functions` (autocomplete hints) was not built; R16's slice adds it.
+- Circular references give 0; `circularReference()` names one cell, and
+  the status bar shows it.
+
 ## S08: Opening and saving XLSX files: values, formulas and sheets
 
 Status: Todo

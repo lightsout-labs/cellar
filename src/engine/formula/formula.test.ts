@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { Value } from '../value';
 import {
   evaluate,
-  functions,
   parse,
   print,
   references,
@@ -95,6 +94,7 @@ describe('formula operators', () => {
     ['0.1+0.2&""', '0.3'],
     ['3&TRUE', '3TRUE'],
     ['1+1=2', true],
+    ['0.1+0.2=0.3', true],
     ['1=1&""', false],
     ['1<2', true],
     ['2>=3', false],
@@ -198,12 +198,6 @@ describe('formula functions', () => {
     expect(calculate('SUM(IF(TRUE,A1:A4))', cells)).toBe(6);
     expect(calculate('IF("x",1,2)', cells)).toEqual(error('#VALUE!'));
   });
-
-  it('names each function with a hint of its arguments', () => {
-    const names = functions.map((each) => each.name);
-    expect(names).toEqual(['AVERAGE', 'COUNT', 'IF', 'MAX', 'MIN', 'SUM']);
-    for (const each of functions) expect(each.hint).toMatch(/^[A-Z]+\(.+\)$/);
-  });
 });
 
 describe('formula errors', () => {
@@ -218,6 +212,8 @@ describe('formula errors', () => {
     ['10^400', '#NUM!'],
     ['(-8)^(1/3)', '#NUM!'],
     ['0^0', '#NUM!'],
+    ['0^-1', '#DIV/0!'],
+    ['SUM(1E308,1E308)', '#NUM!'],
     ['Nowhere!A1', '#REF!'],
     ['SUM(Nowhere!A1:A2)', '#REF!'],
     ['"a"+1', '#VALUE!'],

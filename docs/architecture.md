@@ -122,7 +122,9 @@ Decisions that are cheap to reverse, with their reasons:
   no longer exists gives `#REF!` but keeps its text, so undoing the
   deletion brings it back (Excel writes `#REF!` into the text). Any change
   to the sheets other than a color or the order finds again what every
-  formula reads.
+  formula reads and recalculates every formula. A rename also rewrites
+  references left from a deleted sheet of the same name, which an undo of
+  the rename then does not put back.
 - **Formulas are stored as Excel writes them**: function names and
   references in capitals, sheet names as the sheets have them, without
   spaces other than the intersection operator.
@@ -253,6 +255,7 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 | Unit | App logic that needs no browser: grid geometry, selection and keyboard navigation, the status bar summary, translation completeness for both languages, shortcut tables, the printable document | Vitest |
 | End to end | Each slice's user flow in the built app: keyboard and mouse on the grid, the ribbon, menus and dialogs, storage across reloads, file open and save, both themes and languages, offline use | Playwright on Chromium, Firefox and WebKit |
 | End to end, Chromium only | The system clipboard (R7), and scrolling speed (R45), measured as the time to draw each frame, one scroll step a frame, while scrolling a sheet of 100,000 by 100 populated cells stored directly in IndexedDB; every frame must draw within 16 ms | Playwright |
+| End to end | Recalculation time (R46): a chain of 100,000 formulas, stored directly in IndexedDB as for R45, whose start is edited | Playwright |
 
 Two requirements cannot be fully checked by automated tests and are checked
 by the human at release acceptance: that files saved by Cellar open in
