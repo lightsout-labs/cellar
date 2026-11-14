@@ -217,7 +217,8 @@ Notes:
 
 ## S05: Undo and redo
 
-Status: In progress
+Status: Done
+PR: #8
 
 Acceptance criteria:
 - Ctrl/Cmd+Z undoes and Ctrl/Cmd+Y redoes each change made so far, and the
