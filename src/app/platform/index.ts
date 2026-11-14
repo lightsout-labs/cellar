@@ -8,12 +8,25 @@ export interface Stored {
   readonly changes: Command[];
 }
 
+/** A file the user chose to open. */
+export interface ChosenFile {
+  readonly name: string;
+  readonly bytes: Uint8Array;
+}
+
 /**
  * Everything the app needs from the system it runs on. Only an
  * implementation of this interface may touch files, storage, the clipboard
  * or printing; `web` is the implementation for browsers.
  */
 export interface Platform {
+  /**
+   * Asks the user for an `.xlsx` file and reads it, or gives `null` when
+   * the user chooses none.
+   */
+  openFile(): Promise<ChosenFile | null>;
+  /** Gives the user a file, which the system keeps where it keeps files. */
+  saveFile(name: string, bytes: Uint8Array): Promise<void>;
   /** The workbooks kept in the system's storage. */
   readonly workbooks: {
     /** The stored workbook, or `null` when there is none with this identifier. */

@@ -37,7 +37,7 @@ sheet a moment later.
 | Fonts | The system UI font stack | Works offline (R35) and loads nothing. |
 | Formula engine and workbook model | Our own | See [ADR 0001](adr/0001-own-formula-engine.md). |
 | Number formats and input recognition | `numfmt` | Implements Excel format codes and value parsing (R4, R18). |
-| `.xlsx` | ExcelJS | See [ADR 0003](adr/0003-exceljs-for-xlsx.md). |
+| `.xlsx` | Our own reader over JSZip; ExcelJS for writing | See [ADR 0003](adr/0003-exceljs-for-xlsx.md) and [ADR 0006](adr/0006-own-xlsx-reader.md). |
 | `.csv` | Our own reader and writer | About a hundred lines; no dependency justified (R32). |
 | Threads | Main thread only, recalculation on demand | See [ADR 0004](adr/0004-main-thread-lazy-recalculation.md). |
 | Browser storage | IndexedDB, used directly | Holds large workbooks; the few calls needed do not justify a wrapper (R33). |
@@ -61,9 +61,9 @@ because a requirement needs it.
 | Module | Interface | Hides |
 |---|---|---|
 | `engine/workbook` | `execute(command)`, `undo()`, `redo()` (each giving the cells it changed), `canUndo`, `canRedo`, `cell(sheet, row, col)` (value, formula, display text, text to edit, style, note, link), the sheet size, queries (`find`, `aggregate`, `extent`, `circularReference`, sheet and name lists, layout), `calculations` (a count, to measure recalculation), `subscribe(listener)`, `toSnapshot()`, `fromSnapshot(snapshot, changes)` | Column-oriented cell storage; the dependency graph and on-demand recalculation; circular-reference detection; rewriting references when rows, columns and sheets move; inverse patches for undo; fill series; sort; filters; merges; data validation; conditional format evaluation; named ranges (R1, R5, R6, R8–R10, R14, R15, R19–R27). |
-| `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)`, `functions` (name, argument hints), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used only by `engine/workbook`, plus `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
-| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
-| `engine/io` | `readXlsx(bytes)`, `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | The mapping between a workbook snapshot and ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
+| `engine/formula` | `parse(text)`, `print(ast)`, `evaluate(ast, context)`, `references(ast)`, `shift(ast, move)` (a sheet renamed, or the formula moved by rows and columns), `calculable(ast)`, `functions` (name, argument hints), `quoteSheetName(name)` | Tokenizer and parser; operators and coercion rules; the error values; the library of at least 150 functions (R11–R13, R16). Used by `engine/workbook`, by `engine/io` to check and fill in the formulas of files, and `functions` by the autocomplete; the workbook re-exports `quoteSheetName` for the app. |
+| `engine/format` | `formatValue(value, code)`, `parseInput(text)`, `editText(value, code)`, `builtinFormat(id)` | Excel format codes, date serial numbers, and recognition of typed numbers, dates, times, percentages and booleans, on top of `numfmt` (R4, R18). |
+| `engine/io` | `readXlsx(bytes, name)` (a snapshot and what was dropped), `writeXlsx(snapshot)`, `readCsv(text)`, `writeCsv(snapshot, sheet)` | Reading the parts of an `.xlsx` file; shared formulas; the mapping from a workbook snapshot to ExcelJS; the list of dropped features reported on import; CSV quoting (R30–R32). |
 | `app/platform` | The `Platform` interface: `openFile()`, `saveFile(name, bytes)`, `workbooks` (list, load, record a change, save, rename, delete), `preferences` (get, set), `clipboard` (read, write), `print(document)`; and `webPlatform`, its one implementation | File inputs and downloads; the IndexedDB schema; clipboard events and the asynchronous clipboard API with their browser differences; the print frame (R33, R34, R51). |
 | `app/grid` | `<Grid workbook view />` and the `View` it edits (active sheet, selection, zoom, entry, End mode); `keyAction` and the editor marker, which the formula bar shares to edit the same entry | Canvas drawing and virtualization; frozen panes; hit testing; text measurement, alignment and overflow; selection, resize, fill-handle and reference-picking gestures; the in-cell editor and its Enter and Edit modes; keyboard navigation and editing keys as in Excel (R2, R3, R4, R8, R9, R16, R21, R45). |
 | `app/ui` | `<App platform />` | The start screen, ribbon, formula bar and name box, sheet tabs, status bar, context menus, dialogs and side panels; shortcuts; translation dictionaries; themes; autosave timing; building the printable document (R34, R36–R44). |
@@ -174,6 +174,21 @@ Decisions that are cheap to reverse, with their reasons:
   slice that builds its feature, so none is ever a placeholder (R44).
 - **Files are opened with a file input and saved as a download.** It works
   in all four browsers; the File System Access API does not.
+- **Opening a file makes a new stored workbook**, under a new identifier,
+  and the preference `workbook` names it as the one to show at the start;
+  the workbook shown before stays stored, for the start screen to list.
+  Until then, the workbook shown at the start is the one opened last, or
+  the one with the identifier `default`.
+- **A file opened is read as far as Gridworks supports it.** A formula
+  that does not parse, or calls a function or name that Gridworks does not
+  have, is replaced by its last result. Charts, pivot tables and pictures
+  are counted from the file's parts and left out, and so are cells beyond
+  the 100,000 rows and 100 columns of a sheet. A message bar under the
+  ribbon lists what was left out (R31), or says that a file is not a valid
+  `.xlsx` file, which leaves the workbook shown as it was. The other
+  features of R30 are read by the slices that build them, and until then
+  are left out without a word. A file saved by Gridworks has no formula
+  results in it, and asks to be calculated when it is opened.
 - **Cell fonts are a fixed list of fonts present on all three desktop
   systems**, with fallbacks, so that nothing is downloaded.
 - **Printing builds a plain HTML table** of the sheet or selection with
@@ -207,7 +222,8 @@ workbook leaves the engine.
   [ADR 0005](adr/0005-record-each-change-then-save-snapshots.md).
 - **Preferences** (language, theme): through `Platform.preferences`, stored
   in `localStorage` by the web implementation, under `gridworks.language` and
-  `gridworks.theme`. Without a stored choice the language is that of the
+  `gridworks.theme`; `gridworks.workbook` names the workbook to show at the
+  start. Without a stored choice the language is that of the
   browser and the theme that of the system.
 - **Files**: `.xlsx` and `.csv`, converted to and from a snapshot by
   `engine/io`. Undo history is not stored.
@@ -220,6 +236,7 @@ src/engine/workbook/     Workbook model, commands, recalculation, undo
 src/engine/formula/      Parser, evaluator, function library
 src/engine/format/       Number formats and input recognition
 src/engine/io/           XLSX and CSV
+tests/xlsx.ts            Builds .xlsx files laid out as Excel writes them, for tests
 src/app/platform/        Platform interface
 src/app/platform/web/    The web implementation
 src/app/grid/            Canvas grid and the view state
@@ -227,7 +244,6 @@ src/app/ui/              React shell, dictionaries, themes
 src/main.tsx             Entry point: creates the web platform, mounts App
 tests/e2e/               Playwright tests
 tests/boundaries.test.ts Checks that lint enforces the module boundaries
-tests/fixtures/          Sample .xlsx and .csv files
 scripts/check-docs.py    Document checker, copied from nightshift
 docs/                    Requirements, architecture, ADRs, backlog
 .github/workflows/       CI and deployment
@@ -260,9 +276,10 @@ CI runs both on every pull request as the required checks `check` and `e2e`.
 Two requirements cannot be fully checked by automated tests and are checked
 by the human at release acceptance: that files saved by Gridworks open in
 Microsoft Excel itself (R30), and the 60 frames per second on a mid-range
-laptop (R45). The automated tests cover them as far as they can: files in
-`tests/fixtures` that were saved by Excel, round trips through the writer
-and reader, and a frame-time budget with headroom for CI machines.
+laptop (R45). The automated tests cover them as far as they can: files
+built by `tests/xlsx.ts` with the parts and markup that Excel writes,
+round trips through the writer and reader, and a frame-time budget with
+headroom for CI machines.
 
 ## Deployment
 

@@ -358,7 +358,7 @@ Notes:
 
 ## S08: Opening and saving XLSX files: values, formulas and sheets
 
-Status: Todo
+Status: In progress
 
 Acceptance criteria:
 - The user can open an `.xlsx` file from disk and sees its sheets, values and

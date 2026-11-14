@@ -277,6 +277,7 @@ test.describe('the controls', () => {
     ] as const;
     await check(
       [
+        ['tab', 'File', 'Open and save workbooks'],
         ['tab', 'Home', 'The most used commands'],
         ['tab', 'View', 'Appearance and language'],
         ['button', 'Undo', /^Undo the last change \((Ctrl\+|⌘)Z\)$/],
@@ -297,11 +298,25 @@ test.describe('the controls', () => {
       ],
       7,
     );
+    await page.getByRole('tab', { name: 'File' }).click();
+    await clickCell(page, 5, 5);
+    await check(
+      [
+        ['button', 'Open', 'Open an Excel workbook (.xlsx) from your computer'],
+        [
+          'button',
+          'Save',
+          'Save the workbook to your computer as an Excel workbook (.xlsx)',
+        ],
+        ...statusBar,
+      ],
+      5,
+    );
     await expect(page.getByRole('slider')).toHaveCount(1);
     await expect(page.getByRole('textbox')).toHaveCount(1);
     await expect(
       page.getByRole('tablist', { name: 'Ribbon' }).getByRole('tab'),
-    ).toHaveCount(2);
+    ).toHaveCount(3);
   });
 
   test('are rounded and show hover, keyboard focus and disabled states with a short transition', async ({
