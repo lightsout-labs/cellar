@@ -202,6 +202,18 @@ Notes:
   probably starts nothing. It needs a check with a real input method.
 - The status bar average uses the General format, as Excel's does
   (`0.666666667`).
+- CI is about ten times slower than a local machine, and both timing tests
+  have little margin there. In CI, the engine test that adds up a whole
+  100,000 by 100 sheet took 700 ms against its 500 ms limit, though about
+  40 ms locally; `aggregate` now adds values in its loop without a call per
+  cell (about 25 ms locally). The Chromium scrolling test then drew frames
+  in 18 to 21 ms against its 16 ms budget, because every cell drawn now
+  also formatted through `numfmt` and built its edit text. The fixes:
+  `Cell.input` is a getter, computed only when read; `formatValue` shows
+  integers below 10^11 in General without `numfmt`; and the workbook
+  builds no formula key on a sheet without formulas. The mean frame went
+  from 1.03 ms to 0.77 ms locally, and CI passed. Work added to drawing a
+  cell must be measured; neither limit was raised.
 
 ## S05: Undo and redo
 
